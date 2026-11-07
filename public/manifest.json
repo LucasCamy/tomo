@@ -1,0 +1,64 @@
+{
+  "manifest_version": 3,
+  "name": "Tomo · Estante Visual de Links",
+  "short_name": "Tomo",
+  "version": "1.1.0",
+  "description": "Organize leituras, mangas e referencias por abas com capa automatica, atalhos rapidos de teclado, controle de capitulo e backup JSON.",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "scripting",
+    "storage",
+    "unlimitedStorage"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Salvar ou atualizar parada no Tomo (Alt+Shift+Q)",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+Q",
+        "mac": "Alt+Shift+Q"
+      },
+      "description": "Abrir o popup rapido do Tomo"
+    },
+    "quick-save-tab": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Alt+Shift+S"
+      },
+      "description": "Salvar ou atualizar capitulo da aba atual em 1 tecla"
+    },
+    "save-and-close-tab": {
+      "suggested_key": {
+        "default": "Alt+Shift+X",
+        "mac": "Alt+Shift+X"
+      },
+      "description": "Salvar ou atualizar a aba atual e fechar em seguida"
+    },
+    "open-dashboard": {
+      "suggested_key": {
+        "default": "Alt+Shift+O",
+        "mac": "Alt+Shift+O"
+      },
+      "description": "Abrir a Estante completa do Tomo"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

@@ -1,0 +1,84 @@
+:root,
+[data-theme='dark'] {
+  --bg: #0c0e12;
+  --surface: #13171e;
+  --subtle: #1a2029;
+  --selected: #222936;
+  --night: #0c0e12;
+  --night-ink: #f3f0ea;
+  --night-accent: #f59b4c;
+  --night-line: rgba(243, 240, 234, 0.2);
+  --night-accent-soft: rgba(245, 155, 76, 0.18);
+
+  --ink: #f3f0ea;
+  --muted: #a4aebd;
+  --line: rgba(243, 240, 234, 0.11);
+  --line-strong: rgba(243, 240, 234, 0.22);
+
+  --action: #f59b4c;
+  --action-hover: #f8ad6a;
+  --action-soft: rgba(245, 155, 76, 0.14);
+  --on-action: #170e06;
+  --focus: #f59b4c;
+
+  --success: #5ed396;
+  --success-soft: rgba(94, 211, 150, 0.13);
+  --warning: #f5bc4c;
+  --warning-soft: rgba(245, 188, 76, 0.13);
+  --destructive: #fa7d7d;
+  --destructive-soft: rgba(250, 125, 125, 0.14);
+
+  --overlay: rgba(8, 10, 14, 0.74);
+  --shadow-card: none;
+  --shadow-dialog: 0 20px 48px rgba(0, 0, 0, 0.55);
+
+  --font-display: 'Bricolage Grotesque Variable', 'Plus Jakarta Sans Variable', system-ui, sans-serif;
+  --font-sans: 'Plus Jakarta Sans Variable', system-ui, -apple-system, sans-serif;
+  --font-data: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-enter: 240ms;
+  --dur-exit: 160ms;
+}
+
+[data-theme='light'] {
+  --bg: #f6f3ec;
+  --surface: #ffffff;
+  --subtle: #ece7dd;
+  --selected: #e2dbd0;
+  --night: #181b20;
+  --night-ink: #f6f3ec;
+  --night-accent: #f59b4c;
+  --night-line: rgba(246, 243, 236, 0.22);
+  --night-accent-soft: rgba(245, 155, 76, 0.18);
+
+  --ink: #181b20;
+  --muted: #525a66;
+  --line: rgba(24, 27, 32, 0.11);
+  --line-strong: rgba(24, 27, 32, 0.22);
+
+  --action: #9e3814;
+  --action-hover: #872e0f;
+  --action-soft: rgba(158, 56, 20, 0.1);
+  --on-action: #ffffff;
+  --focus: #9e3814;
+
+  --success: #16653e;
+  --success-soft: rgba(22, 101, 62, 0.1);
+  --warning: #7d4d08;
+  --warning-soft: rgba(125, 77, 8, 0.11);
+  --destructive: #a62626;
+  --destructive-soft: rgba(166, 38, 38, 0.1);
+
+  --overlay: rgba(24, 27, 32, 0.48);
+  --shadow-card: 0 2px 8px rgba(24, 27, 32, 0.05);
+  --shadow-dialog: 0 20px 44px rgba(24, 27, 32, 0.18);
+}
