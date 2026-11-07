@@ -171,7 +171,7 @@ export function LinkCard({
 
           <button
             type="button"
-            className="btn btn-secondary btn-icon"
+            className="btn btn-card-tool"
             onClick={() => onQuickUpdateStop(item)}
             aria-label={`Atualizar capitulo ou link de ${item.title}`}
             title="Atualizar parada (capitulo e link)"
@@ -181,7 +181,7 @@ export function LinkCard({
 
           <button
             type="button"
-            className="btn btn-ghost btn-icon"
+            className="btn btn-card-tool"
             onClick={() => onEdit(item)}
             aria-label={`Editar ${item.title}`}
             title="Editar detalhes"
@@ -191,7 +191,7 @@ export function LinkCard({
 
           <button
             type="button"
-            className="btn btn-ghost btn-icon"
+            className="btn btn-card-tool btn-card-tool--danger"
             onClick={() => onDelete(item)}
             aria-label={`Remover ${item.title}`}
             title="Remover da estante"

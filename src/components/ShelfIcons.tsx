@@ -65,12 +65,32 @@ export function TabCollectionIcon({
 export const STATUS_OPTIONS: Array<{
   value: ReadingStatus;
   label: string;
+  tone: 'action' | 'success' | 'warning' | 'default';
 }> = [
-  { value: 'reading', label: 'Lendo' },
-  { value: 'up_to_date', label: 'Em dia' },
-  { value: 'paused', label: 'Pausado' },
-  { value: 'completed', label: 'Concluido' },
+  { value: 'reading', label: 'Lendo', tone: 'action' },
+  { value: 'up_to_date', label: 'Em dia', tone: 'success' },
+  { value: 'paused', label: 'Pausado', tone: 'warning' },
+  { value: 'completed', label: 'Concluido', tone: 'default' },
 ];
+
+export function StatusIcon({
+  status,
+  size = 15,
+}: {
+  status: ReadingStatus;
+  size?: number;
+}) {
+  switch (status) {
+    case 'reading':
+      return <BookOpen size={size} aria-hidden="true" />;
+    case 'up_to_date':
+      return <CircleCheck size={size} aria-hidden="true" />;
+    case 'paused':
+      return <CircleDashed size={size} aria-hidden="true" />;
+    case 'completed':
+      return <CheckSquare size={size} aria-hidden="true" />;
+  }
+}
 
 export function StatusBadge({ status }: { status: ReadingStatus }) {
   switch (status) {

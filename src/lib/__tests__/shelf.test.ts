@@ -49,6 +49,9 @@ describe('progress & URL helpers', () => {
     expect(
       suggestCleanTitle('Solo Leveling - Capitulo 142 | MangaOnline')
     ).toBe('Solo Leveling');
+    expect(
+      suggestCleanTitle('O Imperador Marcial Dragão Carmesim — Capítulo 1')
+    ).toBe('O Imperador Marcial Dragão Carmesim');
     expect(suggestCleanTitle('Documentacao Vite')).toBe('Documentacao Vite');
   });
 

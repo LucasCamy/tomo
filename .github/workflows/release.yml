@@ -1,0 +1,53 @@
+name: Publicar Release da Extensao
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag da versao (ex: v1.1.0)'
+        required: true
+        default: 'v1.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Validar contraste WCAG AA e testes unitarios
+        run: |
+          npm run verify:contrast
+          npm test
+
+      - name: Gerar pacote .zip pronto para Chrome
+        run: npm run pack
+
+      - name: Publicar Release no GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          name: Tomo ${{ github.event.inputs.tag_name || github.ref_name }}
+          files: release/tomo-chrome-*.zip
+          generate_release_notes: true
+          body: |
+            ### Como instalar no Chrome, Edge ou Brave
+            1. Baixe o arquivo **`tomo-chrome-v*.zip`** logo abaixo em **Assets**.
+            2. Extraia o `.zip` em uma pasta fixa no seu computador (ex.: `Documentos/Tomo`). Nao apague essa pasta depois.
+            3. Abra `chrome://extensions/` no navegador e ative a chave **Modo do desenvolvedor** no canto superior direito.
+            4. Clique em **Carregar sem compactacao** (*Load unpacked*) e selecione a pasta extraida (onde esta o arquivo `manifest.json`).

@@ -1,56 +1,150 @@
-# Tomo · Estante Visual de Links (Extensao Chrome)
+# Tomo · Estante Visual de Links
 
-Extensao local para Google Chrome (Manifest V3) para salvar e organizar sites, mangas, leituras e referencias separados por abas visuais, eliminando a necessidade de manter dezenas de abas abertas.
+Extensao para **Google Chrome**, **Microsoft Edge** e **Brave** (Manifest V3) criada para salvar e organizar sites, mangas, leituras e referencias separados por abas visuais, sem precisar deixar dezenas de abas abertas consumindo memoria.
 
-Tudo fica salvo **100% na sua maquina** (`IndexedDB` + `unlimitedStorage`), com suporte completo a **Exportar** e **Importar** backup em `.json`.
+Tudo fica salvo **100% no seu proprio computador** (`IndexedDB` local), sem conta, sem nuvem externa e com suporte completo a **Exportar** e **Importar** backup em arquivo `.json`.
+
+> **Download direto para instalar:** [**Baixar ultima versao (.zip) em Releases**](https://github.com/LucasCamy/tomo/releases/latest)
+
+---
+
+## Previa da Extensao
+
+### Estante completa (Tema Escuro e Tema Claro)
+![Estante do Tomo no tema escuro](docs/screenshots/estante-dark.png)
+
+![Estante do Tomo no tema claro](docs/screenshots/estante-light.png)
+
+### Popup rapido na barra do navegador
+<img src="docs/screenshots/popup.png" alt="Popup rapido do Tomo" width="380" />
+
+---
+
+## Como instalar (passo a passo rapido, sem precisar programar)
+
+Funciona no **Google Chrome**, **Brave**, **Microsoft Edge**, **Opera** e **Vivaldi** no computador:
+
+### 1. Baixe e extraia o pacote pronto
+1. Acesse a pagina de [**Releases do Tomo**](https://github.com/LucasCamy/tomo/releases/latest).
+2. Em **Assets** (no fim da nota da versao), clique em **`tomo-chrome-v1.1.0.zip`** (ou a versao mais recente) para baixar.
+3. Clique com o botao direito no arquivo `.zip` baixado e escolha **Extrair Tudo...** (*Extract All*).
+4. Salve a pasta extraida em um local fixo do seu PC (por exemplo: `Documentos/Tomo`).
+   > **Importante:** nao apague nem mova essa pasta depois de instalar, pois o navegador carrega a extensao diretamente dela.
+
+### 2. Carregue no seu navegador
+1. Abra uma nova aba, digite o endereco abaixo conforme seu navegador e aperte `Enter`:
+   - **Chrome:** `chrome://extensions/`
+   - **Edge:** `edge://extensions/`
+   - **Brave:** `brave://extensions/`
+2. Ative a chave **Modo do desenvolvedor** (*Developer mode*), que fica no canto superior direito (ou esquerdo, no Edge).
+3. Clique no botao **Carregar sem compactacao** (*Load unpacked*).
+4. Selecione a pasta que voce extraiu (certifique-se de selecionar a pasta que tem o arquivo `manifest.json` diretamente dentro dela).
+
+### 3. Fixe o icone na barra para usar em 1 clique
+1. Clique no icone de **quebra-cabeca** (Extensoes) no canto superior direito do navegador.
+2. Clique no icone de **alfinete (Fixar)** ao lado de **Tomo · Estante Visual de Links**.
+3. Pronto! Agora basta clicar no icone do **Tomo** em qualquer site para salvar ou apertar `Alt+Shift+S`.
+
+---
+
+## Como atualizar quando sair versao nova (sem perder seus links)
+
+1. Por seguranca extra (opcional), abra a Estante do Tomo e clique em **Exportar** no canto inferior esquerdo para guardar uma copia `.json`.
+2. Baixe o novo `tomo-chrome-v*.zip` em [**Releases**](https://github.com/LucasCamy/tomo/releases/latest).
+3. Extraia os arquivos novos **dentro da mesma pasta** onde voce instalou antes, substituindo os arquivos antigos.
+4. Abra `chrome://extensions/` e clique no icone de **Recarregar** (seta circular) no card do **Tomo**.
+   - Como a pasta continua no mesmo caminho, o navegador mantem o mesmo ID da extensao e **todos os seus mangas, capas e abas continuam salvos intactos**.
+
+---
 
 ## Principais Recursos
 
-- **Popup rapido ao clicar no icone:**
-  - Captura automatica da capa da pagina (`og:image` ou miniatura visual da aba em WebP offline).
-  - Deteccao automatica do capitulo/episodio atual (ex.: `Cap. 142`, `Cap. 375.5`, `Ep. 8`).
-  - **Reconhecimento inteligente de obra ja salva:** se voce ja salvou um manga no `Cap. 142` e abrir o popup lendo o `Cap. 148`, basta 1 clique em **Atualizar parada** (ou **Atualizar e fechar**) sem duplicar favoritos.
-  - Botao **Salvar e fechar** para guardar o link e liberar memoria do Chrome na hora.
-- **Atalhos Rapidos de Teclado (Globais e Internos):**
-  - `Alt+Shift+S`: salva o site atual (ou atualiza o capitulo se a obra ja estiver na estante) direto pelo teclado, sem precisar abrir o popup, exibindo aviso visual discreto no canto da pagina.
-  - `Alt+Shift+X`: salva/atualiza o site atual e fecha a aba em seguida.
-  - `Alt+Shift+Q`: abre o Popup rapido do Tomo (onde `Enter` / `Ctrl+Enter` salva, `Alt+Enter` salva e fecha, `Alt+Seta Cima/Baixo` altera o capitulo e `Alt+1..9` escolhe a aba).
-  - `Alt+Shift+O`: abre ou foca a Estante completa (onde `/` foca a busca, `N` cria novo link, `G` guarda abas abertas, `0..9` troca de aba e `?` abre o guia de atalhos).
-  - Personalizaveis em `chrome://extensions/shortcuts`.
-- **Painel Visual em Tela Cheia (Estante):**
-  - Separacao livre por abas/colecoes personalizaveis (`Mangas`, `Leituras & Estudos`, `Para ver depois`, ou quantas quiser criar, renomear, reordenar e escolher icone).
-  - Botao `+1` direto no card para avancar o capitulo rapidamente e botao **Atualizar parada** conectado as abas abertas do navegador.
-  - **Guardar abas abertas em lote:** selecione varias abas abertas da janela do Chrome, salve todas de uma vez na colecao escolhida e feche-as automaticamente.
-  - Busca instantanea (atalho `/`), filtros por status (`Lendo`, `Em dia`, `Pausado`, `Concluido`), fixacao no topo, modo Galeria ou Compacto, e alternancia entre **Tema Escuro** (padrao) e **Tema Claro**.
-- **Backup Local (`.json`):**
-  - **Exportar:** baixa um arquivo `tomo-backup-AAAA-MM-DD.json` com todas as abas, cards, capas, capitulos e notas.
-  - **Importar:** valida o arquivo localmente e permite escolher entre **Mesclar com a estante atual** (sem apagar o que ja existe) ou **Substituir toda a estante**.
+- **Salvamento e reconhecimento inteligente:**
+  - Captura automatica da capa do site (`og:image`) ou miniatura visual comprimida da aba (WebP local).
+  - Detecta automaticamente o capitulo ou episodio pelo titulo/URL (`Cap. 142`, `Cap. 375.5`, `Ep. 08`).
+  - Se voce ja salvou uma obra no `Cap. 142` e abrir o popup lendo o `Cap. 148`, o Tomo reconhece a obra e oferece **Atualizar parada** em 1 clique sem duplicar card.
+  - Opcao **Salvar e fechar** para guardar onde parou e ja fechar a aba do navegador na hora.
+- **Estante visual organizada por abas:**
+  - Crie, renomeie, escolha icones e reordene quantas abas/colecoes quiser (`Mangas`, `Leituras & Estudos`, `Para ver depois`, etc.).
+  - Botao `+1` direto na capa do card para somar capitulos rapidamente.
+  - **Guardar abas abertas:** importa varias abas abertas da janela do Chrome de uma so vez e fecha todas automaticamente.
+  - Busca instantanea, filtros por status (`Lendo`, `Em dia`, `Pausado`, `Concluido`), ordenacao, modo Galeria ou Compacto e alternancia entre **Tema Escuro** e **Tema Claro**.
+- **Backup 100% local (`.json`):**
+  - Exporte toda a sua estante para um arquivo `.json` e importe em outro computador escolhendo entre **Mesclar** ou **Substituir**.
 
-## Como instalar no Google Chrome
+---
 
-A pasta `dist` ja foi gerada e esta pronta para uso:
+## Atalhos de Teclado
 
-1. Abra o Google Chrome e digite `chrome://extensions` na barra de enderecos.
-2. No canto superior direito, ative a chave **Modo do desenvolvedor** (*Developer mode*).
-3. Clique no botao **Carregar sem compactacao** (*Load unpacked*).
-4. Selecione a pasta `dist` dentro deste projeto (`d:\Projetos\Extension\dist`).
-5. Pronto! Fixe o icone do **Tomo** (peca de quebra-cabeca no topo direito do Chrome -> icone de alfinete ao lado do Tomo) para salvar paginas com 1 clique.
+### Em qualquer site no navegador (Globais)
 
-## Comandos de Desenvolvimento
+| Atalho padrao | O que faz |
+|---|---|
+| `Alt+Shift+S` | Salva o site atual (ou atualiza o capitulo se ja estiver salvo) sem abrir o popup |
+| `Alt+Shift+X` | Salva/atualiza o site atual e ja fecha a aba |
+| `Alt+Shift+Q` | Abre o Popup rapido do Tomo |
+| `Alt+Shift+O` | Abre ou foca a Estante completa |
+
+> Voce pode personalizar qualquer tecla global acessando `chrome://extensions/shortcuts`.
+
+### Dentro do Popup rapido
+
+| Atalho | O que faz |
+|---|---|
+| `Enter` ou `Ctrl+Enter` | Confirma o salvamento ou atualizacao da parada |
+| `Alt+Enter` | Salva/atualiza e fecha a aba atual |
+| `Alt+Seta Cima / Baixo` | Soma `+1` ou diminui `-1` no numero do capitulo |
+| `Alt+1` ate `Alt+9` | Escolhe rapidamente a aba de destino |
+
+### Dentro da Estante
+
+| Atalho | O que faz |
+|---|---|
+| `/` | Foca o campo de busca |
+| `N` | Abre o modal de Novo link |
+| `G` | Abre o modal de Guardar abas abertas |
+| `0` | Mostra `Todos os links` |
+| `1` ate `9` | Alterna entre suas abas na ordem da barra lateral |
+| `?` | Abre o guia completo de atalhos |
+
+---
+
+## Privacidade e Seguranca
+
+- **Zero servidores externos:** nenhum historico, URL, nota ou imagem sai da sua maquina.
+- **Validacao local:** backups `.json` importados passam por validacao de estrutura e bloqueio de esquemas inseguros (aceitando apenas links `http://` e `https://`).
+
+---
+
+## Para Desenvolvedores (rodar pelo codigo-fonte e publicar Releases)
+
+Pre-requisito: [Node.js 20+](https://nodejs.org/).
 
 ```bash
-# Instalar dependencias
+# 1. Clonar o repositorio e instalar dependencias
+git clone https://github.com/LucasCamy/tomo.git
+cd tomo
 npm install
 
-# Rodar testes automatizados (Vitest)
+# 2. Rodar testes unitarios e verificacao de contraste WCAG AA
 npm test
-
-# Verificar contraste WCAG AA dos temas Escuro e Claro
 npm run verify:contrast
 
-# Gerar pacote de producao na pasta dist/ (para recarregar no Chrome apos edicoes)
+# 3. Gerar a pasta dist/ pronta para carregar em chrome://extensions
 npm run build
 
-# Rodar em modo desenvolvimento no navegador
-npm run dev
+# 4. Gerar tambem o pacote release/tomo-chrome-vX.Y.Z.zip
+npm run pack
 ```
+
+### Como lancar uma nova versao publica no GitHub Releases
+O repositorio ja possui **GitHub Actions** configurado em [`.github/workflows/release.yml`](.github/workflows/release.yml):
+1. Atualize o campo `"version"` em `public/manifest.json` e `package.json` (ex.: `"1.2.0"`).
+2. Faca commit e crie uma tag comecando com `v`:
+   ```bash
+   git add .
+   git commit -m "chore: prepara versao 1.2.0"
+   git tag v1.2.0
+   git push origin main --tags
+   ```
+3. O GitHub vai rodar os testes automaticamente, gerar o `.zip` e publicar a nova pagina em **Releases** pronta para seus amigos baixarem!

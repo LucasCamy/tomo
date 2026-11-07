@@ -64,9 +64,9 @@ Fontes empacotadas localmente via `@fontsource-variable` (100% offline e compati
 ## 4. Ergonomia, Responsividade e Motion
 
 - **Recomposicao responsiva:**
-  - Popup da extensao: `380px` de largura, focado em acao rapida de 1 clique.
-  - Painel em tela cheia (`dashboard.html`): sidebar fixa (`256px`) a partir de `1024px`; em telas estreitas (`< 1024px`), cabecalho compacto com trilho horizontal de abas e barra inferior fixa (`Bottom Nav`) para acoes primarias.
-- **Formularios acessiveis:** `label` visivel acima do campo, fonte `>= 16px` em telas `< 640px`, alvos interativos `>= 44px` no painel, validacao inline com `role="alert"` e `aria-invalid`.
+  - Popup da extensao: `416px` de largura com margens simetricas (`20px`) e barra de rolagem discreta integrada ao tema, focado em acao rapida de 1 clique ou teclado.
+  - Painel em tela cheia (`dashboard.html`): sidebar fixa (`276px`, com cabecalho/rodape fixos e lista de abas rolavel em capsulas alinhadas) e barra superior de acoes/busca/filtros fixa (`sticky`) a partir de `768px`; em telas estreitas (`< 1024px`), cabecalho compacto com trilho horizontal de abas e barra inferior fixa (`Bottom Nav`) para acoes primarias.
+- **Formularios e seletores acessiveis:** `label` visivel acima do campo, componente customizado `SelectDropdown` (`role="listbox"`, icones semanticos, posicionamento automatico `drop-up` e navegacao por teclado), fonte `>= 16px` em telas `< 640px`, alvos interativos `>= 44px` no painel, validacao inline com `role="alert"` e `aria-invalid`.
 - **Motion e Anti-Flick:**
   - Abas e filtros trocam o estado ativo instantaneamente (sem transicao de cor de fundo ao selecionar).
   - Clique tatil em botoes com `scale(0.97)` em `120ms`.

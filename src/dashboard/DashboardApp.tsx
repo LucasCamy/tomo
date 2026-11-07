@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowDown,
+  ArrowDownAZ,
   ArrowUp,
   Bookmark,
   CircleCheck,
+  Clock,
   Download,
   FolderInput,
   FolderPlus,
@@ -17,6 +19,7 @@ import {
   RefreshCw,
   Search,
   Settings2,
+  Sparkles,
   Sun,
   Trash2,
   Upload,
@@ -25,7 +28,12 @@ import {
 import { LinkCard } from '../components/LinkCard';
 import { ModalDialog } from '../components/ModalDialog';
 import {
+  SelectDropdown,
+  type DropdownOption,
+} from '../components/SelectDropdown';
+import {
   STATUS_OPTIONS,
+  StatusIcon,
   TAB_ICON_OPTIONS,
   TabCollectionIcon,
 } from '../components/ShelfIcons';
@@ -361,6 +369,68 @@ export function DashboardApp() {
         : items.filter((item) => item.tabId === activeTabId);
     return base.filter((i) => i.status === 'reading').length;
   }, [items, activeTabId]);
+
+  const sortOptions = useMemo<DropdownOption<SortOption>[]>(
+    () => [
+      {
+        value: 'updated',
+        label: 'Atualizados por ultimo',
+        icon: <Clock size={15} />,
+      },
+      {
+        value: 'title',
+        label: 'Ordem alfabetica (A-Z)',
+        icon: <ArrowDownAZ size={15} />,
+      },
+      {
+        value: 'created',
+        label: 'Adicionados recentemente',
+        icon: <Sparkles size={15} />,
+      },
+    ],
+    []
+  );
+
+  const tabDropdownOptions = useMemo<DropdownOption<string>[]>(
+    () =>
+      tabs.map((tab) => ({
+        value: tab.id,
+        label: tab.name,
+        icon: <TabCollectionIcon name={tab.icon} size={15} />,
+      })),
+    [tabs]
+  );
+
+  const statusDropdownOptions = useMemo<DropdownOption<ReadingStatus>[]>(
+    () =>
+      STATUS_OPTIONS.map((opt) => ({
+        value: opt.value,
+        label: opt.label,
+        tone: opt.tone,
+        icon: <StatusIcon status={opt.value} size={15} />,
+      })),
+    []
+  );
+
+  const deleteTabMoveOptions = useMemo<DropdownOption<string>[]>(() => {
+    if (!editingTab) return [];
+    const moveTargets = tabs
+      .filter((t) => t.id !== editingTab.id)
+      .map((t) => ({
+        value: t.id,
+        label: `Mover links para "${t.name}"`,
+        icon: <TabCollectionIcon name={t.icon} size={15} />,
+      }));
+    return [
+      ...moveTargets,
+      {
+        value: '__DELETE__',
+        label: 'Apagar tambem todos os links desta aba',
+        tone: 'destructive',
+        icon: <Trash2 size={15} />,
+      },
+    ];
+  }, [tabs, editingTab]);
 
   // Abertura de modais
   const openCreateItemModal = () => {
@@ -763,84 +833,82 @@ export function DashboardApp() {
 
       {/* Sidebar Desktop (>= 1024px) */}
       <aside className="shelf-sidebar" aria-label="Navegacao e backup local">
-        <div className="brand-row">
-          <div className="brand-mark">
-            <span className="brand-icon" aria-hidden="true">
-              <Bookmark size={18} />
-            </span>
-            <div>
-              <p className="brand-title">Tomo</p>
-              <p className="brand-subtitle">Estante visual de links</p>
+        <div className="sidebar-top-fixed">
+          <div className="brand-row">
+            <div className="brand-mark">
+              <span className="brand-icon" aria-hidden="true">
+                <Bookmark size={18} />
+              </span>
+              <div>
+                <p className="brand-title">Tomo</p>
+                <p className="brand-subtitle">Estante visual de links</p>
+              </div>
             </div>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-icon btn-sm"
+              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+              aria-label={
+                theme === 'dark' ? 'Alternar para tema claro' : 'Alternar para tema escuro'
+              }
+              title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+            >
+              {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
           </div>
 
-          <button
-            type="button"
-            className="btn btn-ghost btn-icon"
-            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-            aria-label={
-              theme === 'dark' ? 'Alternar para tema claro' : 'Alternar para tema escuro'
-            }
-            title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-          >
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-        </div>
-
-        <div>
-          <div className="sidebar-section-label">
-            <span>Visao geral</span>
-          </div>
-          <div className="sidebar-tabs-list">
-            <div className="sidebar-tab-row">
-              <button
-                type="button"
-                className={`nav-tab ${activeTabId === 'ALL' ? 'is-active' : ''}`}
-                aria-current={activeTabId === 'ALL' ? 'page' : undefined}
-                onClick={() => setActiveTabId('ALL')}
+          <div>
+            <div className="sidebar-section-label">
+              <span>Visao geral</span>
+            </div>
+            <div className="sidebar-tabs-list">
+              <div
+                className={`sidebar-tab-capsule ${
+                  activeTabId === 'ALL' ? 'is-active' : ''
+                }`}
               >
-                <span className="nav-tab-main">
-                  <Layers size={17} className="nav-tab-icon" aria-hidden="true" />
-                  <span>Todos os links</span>
-                </span>
-                <span className="tab-count">{items.length}</span>
-              </button>
+                <button
+                  type="button"
+                  className="sidebar-tab-trigger"
+                  aria-current={activeTabId === 'ALL' ? 'page' : undefined}
+                  onClick={() => setActiveTabId('ALL')}
+                >
+                  <span className="nav-tab-main">
+                    <Layers size={17} className="nav-tab-icon" aria-hidden="true" />
+                    <span>Todos os links</span>
+                  </span>
+                  <span className="tab-count">{items.length}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        <div>
+        <div className="sidebar-tabs-section">
           <div className="sidebar-section-label">
             <span>Suas abas</span>
             <button
               type="button"
+              className="btn-sidebar-add"
               onClick={openCreateTabModal}
-              style={{
-                border: 'none',
-                background: 'none',
-                color: 'var(--action)',
-                fontWeight: 700,
-                fontSize: 12,
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '2px 4px',
-              }}
             >
-              <Plus size={14} aria-hidden="true" />
+              <Plus size={13} aria-hidden="true" />
               <span>Nova aba</span>
             </button>
           </div>
 
-          <div className="sidebar-tabs-list">
+          <div className="sidebar-tabs-scroll">
             {tabs.map((tab) => {
               const isActive = activeTabId === tab.id;
               return (
-                <div key={tab.id} className="sidebar-tab-row">
+                <div
+                  key={tab.id}
+                  className={`sidebar-tab-capsule ${isActive ? 'is-active' : ''}`}
+                >
                   <button
                     type="button"
-                    className={`nav-tab ${isActive ? 'is-active' : ''}`}
+                    className="sidebar-tab-trigger"
                     aria-current={isActive ? 'page' : undefined}
                     onClick={() => setActiveTabId(tab.id)}
                   >
@@ -857,7 +925,7 @@ export function DashboardApp() {
 
                   <button
                     type="button"
-                    className="btn btn-ghost btn-icon"
+                    className="sidebar-tab-config-btn"
                     onClick={() => openManageTabModal(tab)}
                     aria-label={`Configurar aba ${tab.name}`}
                     title={`Editar aba ${tab.name}`}
@@ -902,271 +970,284 @@ export function DashboardApp() {
 
       {/* Area Principal da Estante */}
       <main className="shelf-main">
-        {bannerMsg ? (
-          <div className="feedback-banner feedback-banner--success" role="status">
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <CircleCheck size={17} aria-hidden="true" />
-              <span>{bannerMsg}</span>
-            </span>
-            <button
-              type="button"
-              className="btn btn-ghost btn-icon btn-sm"
-              onClick={() => setBannerMsg(null)}
-              aria-label="Fechar aviso"
-            >
-              <X size={15} />
-            </button>
-          </div>
-        ) : null}
-
-        <div className="shelf-header">
-          <div className="shelf-heading">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <h1>{activeTabObj ? activeTabObj.name : 'Todos os links'}</h1>
-              {activeTabObj ? (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-icon"
-                  onClick={() => openManageTabModal(activeTabObj)}
-                  aria-label={`Editar aba ${activeTabObj.name}`}
-                  title="Renomear ou organizar esta aba"
-                >
-                  <Settings2 size={17} aria-hidden="true" />
-                </button>
-              ) : null}
-            </div>
-            <p className="shelf-meta-summary font-data">
-              {filteredItems.length}{' '}
-              {filteredItems.length === 1 ? 'item exibido' : 'itens exibidos'} ·{' '}
-              {readingCountInView} em leitura ativa
-            </p>
-          </div>
-
-          <div className="shelf-header-actions">
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={openShortcutsModal}
-              title="Abrir guia de atalhos (tecla ?)"
-            >
-              <Keyboard size={16} aria-hidden="true" />
-              <span>Atalhos</span>
-              <kbd className="kbd-badge">?</kbd>
-            </button>
-
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={openBatchTabsModal}
-              title="Tecla G"
-            >
-              <FolderInput size={16} aria-hidden="true" />
-              <span>Guardar abas abertas</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={openCreateItemModal}
-              title="Tecla N"
-            >
-              <Plus size={17} aria-hidden="true" />
-              <span>Novo link</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Barra de busca, filtros de status, ordenacao e densidade */}
-        <section className="shelf-toolbar" aria-label="Busca e filtros">
-          <div className="search-field-wrap">
-            <Search size={16} className="search-field-icon" aria-hidden="true" />
-            <input
-              id="shelf-search-input"
-              name="shelfSearch"
-              ref={searchInputRef}
-              type="search"
-              className="search-input"
-              placeholder="Buscar por obra, site, capitulo ou nota... (atalho /)"
-              aria-label="Buscar links na estante"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery ? (
+        <div className="shelf-top-sticky">
+          {bannerMsg ? (
+            <div className="feedback-banner feedback-banner--success" role="status">
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <CircleCheck size={17} aria-hidden="true" />
+                <span>{bannerMsg}</span>
+              </span>
               <button
                 type="button"
-                className="search-clear-btn"
-                onClick={() => setSearchQuery('')}
-                aria-label="Limpar busca"
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={() => setBannerMsg(null)}
+                aria-label="Fechar aviso"
               >
                 <X size={15} />
               </button>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
 
-          <div className="toolbar-filters">
-            <div className="filter-rail no-scrollbar" role="group" aria-label="Filtrar por status">
+          <div className="shelf-header">
+            <div className="shelf-heading">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <h1>{activeTabObj ? activeTabObj.name : 'Todos os links'}</h1>
+                {activeTabObj ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-icon btn-sm"
+                    onClick={() => openManageTabModal(activeTabObj)}
+                    aria-label={`Editar aba ${activeTabObj.name}`}
+                    title="Renomear ou organizar esta aba"
+                  >
+                    <Settings2 size={16} aria-hidden="true" />
+                  </button>
+                ) : null}
+              </div>
+              <p className="shelf-meta-summary font-data">
+                {filteredItems.length}{' '}
+                {filteredItems.length === 1 ? 'item exibido' : 'itens exibidos'} ·{' '}
+                {readingCountInView} em leitura ativa
+              </p>
+            </div>
+
+            <div className="shelf-header-actions">
               <button
                 type="button"
-                className={`filter-chip ${statusFilter === 'ALL' ? 'is-active' : ''}`}
-                aria-pressed={statusFilter === 'ALL'}
-                onClick={() => setStatusFilter('ALL')}
+                className="btn btn-surface"
+                onClick={openShortcutsModal}
+                title="Abrir guia de atalhos (tecla ?)"
               >
-                Todos
+                <Keyboard size={16} aria-hidden="true" />
+                <span>Atalhos</span>
+                <kbd className="kbd-badge">?</kbd>
               </button>
-              {STATUS_OPTIONS.map((opt) => (
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={openBatchTabsModal}
+                title="Tecla G"
+              >
+                <FolderInput size={16} aria-hidden="true" />
+                <span>Guardar abas abertas</span>
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={openCreateItemModal}
+                title="Tecla N"
+              >
+                <Plus size={17} aria-hidden="true" />
+                <span>Novo link</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Barra de busca, filtros de status, ordenacao e densidade */}
+          <section className="shelf-toolbar" aria-label="Busca e filtros">
+            <div className="search-field-wrap">
+              <Search size={16} className="search-field-icon" aria-hidden="true" />
+              <input
+                id="shelf-search-input"
+                name="shelfSearch"
+                ref={searchInputRef}
+                type="search"
+                className="search-input"
+                placeholder="Buscar obra, site, capitulo ou nota... (/)"
+                aria-label="Buscar links na estante"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery ? (
                 <button
-                  key={opt.value}
                   type="button"
-                  className={`filter-chip ${
-                    statusFilter === opt.value ? 'is-active' : ''
-                  }`}
-                  aria-pressed={statusFilter === opt.value}
-                  onClick={() => setStatusFilter(opt.value)}
+                  className="search-clear-btn"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Limpar busca"
                 >
-                  {opt.label}
+                  <X size={15} />
                 </button>
-              ))}
+              ) : null}
             </div>
 
-            <select
-              id="shelf-sort-select"
-              name="shelfSort"
-              className="select-input"
-              style={{ width: 'auto', minHeight: 40, padding: '0 12px' }}
-              aria-label="Ordenar links"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortOption)}
-            >
-              <option value="updated">Atualizados por ultimo</option>
-              <option value="title">Ordem alfabetica (A-Z)</option>
-              <option value="created">Adicionados recentemente</option>
-            </select>
+            <div className="toolbar-filters">
+              <div
+                className="segmented-group is-scrollable no-scrollbar"
+                role="group"
+                aria-label="Filtrar por status"
+              >
+                <div className="filter-rail">
+                  <button
+                    type="button"
+                    className={`filter-chip ${statusFilter === 'ALL' ? 'is-active' : ''}`}
+                    aria-pressed={statusFilter === 'ALL'}
+                    onClick={() => setStatusFilter('ALL')}
+                  >
+                    Todos
+                  </button>
+                  {STATUS_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`filter-chip ${
+                        statusFilter === opt.value ? 'is-active' : ''
+                      }`}
+                      aria-pressed={statusFilter === opt.value}
+                      onClick={() => setStatusFilter(opt.value)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-            <div style={{ display: 'inline-flex', gap: 4 }} role="group" aria-label="Modo de exibicao">
-              <button
-                type="button"
-                className={`filter-chip ${density === 'gallery' ? 'is-active' : ''}`}
-                style={{ minWidth: 40, justifyContent: 'center', padding: 0 }}
-                aria-pressed={density === 'gallery'}
-                aria-label="Visualizacao em galeria de capas"
-                title="Galeria de capas"
-                onClick={() => setDensity('gallery')}
+              <SelectDropdown
+                id="shelf-sort-select"
+                ariaLabel="Ordenar links"
+                size="compact"
+                align="right"
+                fullWidth={false}
+                value={sortBy}
+                options={sortOptions}
+                onChange={setSortBy}
+              />
+
+              <div
+                className="segmented-group"
+                role="group"
+                aria-label="Modo de exibicao"
               >
-                <Grid2x2 size={16} />
-              </button>
-              <button
-                type="button"
-                className={`filter-chip ${density === 'compact' ? 'is-active' : ''}`}
-                style={{ minWidth: 40, justifyContent: 'center', padding: 0 }}
-                aria-pressed={density === 'compact'}
-                aria-label="Visualizacao compacta"
-                title="Modo compacto"
-                onClick={() => setDensity('compact')}
-              >
-                <List size={16} />
-              </button>
+                <button
+                  type="button"
+                  className={`filter-chip filter-chip--icon ${
+                    density === 'gallery' ? 'is-active' : ''
+                  }`}
+                  aria-pressed={density === 'gallery'}
+                  aria-label="Visualizacao em galeria de capas"
+                  title="Galeria de capas"
+                  onClick={() => setDensity('gallery')}
+                >
+                  <Grid2x2 size={16} />
+                </button>
+                <button
+                  type="button"
+                  className={`filter-chip filter-chip--icon ${
+                    density === 'compact' ? 'is-active' : ''
+                  }`}
+                  aria-pressed={density === 'compact'}
+                  aria-label="Visualizacao compacta"
+                  title="Modo compacto"
+                  onClick={() => setDensity('compact')}
+                >
+                  <List size={16} />
+                </button>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
 
         {/* Conteudo / Estados */}
-        {loading ? (
-          <div className="empty-state" role="status">
-            <p>Carregando sua estante local...</p>
-          </div>
-        ) : filteredItems.length === 0 ? (
-          <section className="empty-state">
-            <div className="empty-state-icon" aria-hidden="true">
-              <Bookmark size={24} />
+        <div className="shelf-content">
+          {loading ? (
+            <div className="empty-state" role="status">
+              <p>Carregando sua estante local...</p>
             </div>
-            {items.length === 0 ? (
-              <>
-                <h2>Sua estante esta pronta para receber seus links</h2>
-                <p>
-                  Salve seus mangas, leituras ou referencias pelo icone do Tomo na barra
-                  do Chrome, guarde todas as abas abertas de uma vez ou importe um
-                  backup JSON.
-                </p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 6 }}>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={openCreateItemModal}
-                  >
-                    <Plus size={16} aria-hidden="true" />
-                    <span>Adicionar primeiro link</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={openBatchTabsModal}
-                  >
-                    <FolderInput size={16} aria-hidden="true" />
-                    <span>Guardar abas abertas</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={openImportBackupModal}
-                  >
-                    <Upload size={16} aria-hidden="true" />
-                    <span>Importar JSON</span>
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <h2>Nenhum link encontrado para este filtro</h2>
-                <p>
-                  Tente limpar o termo de busca, alternar o filtro de status ou escolher
-                  outra aba da estante.
-                </p>
-                <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
-                  {(searchQuery || statusFilter !== 'ALL') ? (
+          ) : filteredItems.length === 0 ? (
+            <section className="empty-state">
+              <div className="empty-state-icon" aria-hidden="true">
+                <Bookmark size={24} />
+              </div>
+              {items.length === 0 ? (
+                <>
+                  <h2>Sua estante esta pronta para receber seus links</h2>
+                  <p>
+                    Salve seus mangas, leituras ou referencias pelo icone do Tomo na barra
+                    do Chrome, guarde todas as abas abertas de uma vez ou importe um
+                    backup JSON.
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 6 }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={openCreateItemModal}
+                    >
+                      <Plus size={16} aria-hidden="true" />
+                      <span>Adicionar primeiro link</span>
+                    </button>
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      onClick={() => {
-                        setSearchQuery('');
-                        setStatusFilter('ALL');
-                      }}
+                      onClick={openBatchTabsModal}
                     >
-                      Limpar filtros
+                      <FolderInput size={16} aria-hidden="true" />
+                      <span>Guardar abas abertas</span>
                     </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={openCreateItemModal}
-                  >
-                    <Plus size={16} aria-hidden="true" />
-                    <span>Novo link nesta aba</span>
-                  </button>
-                </div>
-              </>
-            )}
-          </section>
-        ) : (
-          <section
-            className={`cards-grid ${density === 'compact' ? 'is-compact' : ''}`}
-            aria-label="Links salvos"
-          >
-            {filteredItems.map((item) => (
-              <LinkCard
-                key={item.id}
-                item={item}
-                tabName={tabNameById.get(item.tabId)}
-                showTabBadge={activeTabId === 'ALL'}
-                onOpenLink={(it) => openExternalLink(it.url)}
-                onStepProgress={handleStepCardProgress}
-                onTogglePin={handleTogglePin}
-                onQuickUpdateStop={openQuickStopModal}
-                onEdit={openEditItemModal}
-                onDelete={(it) => setItemPendingDelete(it)}
-              />
-            ))}
-          </section>
-        )}
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={openImportBackupModal}
+                    >
+                      <Upload size={16} aria-hidden="true" />
+                      <span>Importar JSON</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2>Nenhum link encontrado para este filtro</h2>
+                  <p>
+                    Tente limpar o termo de busca, alternar o filtro de status ou escolher
+                    outra aba da estante.
+                  </p>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+                    {(searchQuery || statusFilter !== 'ALL') ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          setSearchQuery('');
+                          setStatusFilter('ALL');
+                        }}
+                      >
+                        Limpar filtros
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={openCreateItemModal}
+                    >
+                      <Plus size={16} aria-hidden="true" />
+                      <span>Novo link nesta aba</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </section>
+          ) : (
+            <section
+              className={`cards-grid ${density === 'compact' ? 'is-compact' : ''}`}
+              aria-label="Links salvos"
+            >
+              {filteredItems.map((item) => (
+                <LinkCard
+                  key={item.id}
+                  item={item}
+                  tabName={tabNameById.get(item.tabId)}
+                  showTabBadge={activeTabId === 'ALL'}
+                  onOpenLink={(it) => openExternalLink(it.url)}
+                  onStepProgress={handleStepCardProgress}
+                  onTogglePin={handleTogglePin}
+                  onQuickUpdateStop={openQuickStopModal}
+                  onEdit={openEditItemModal}
+                  onDelete={(it) => setItemPendingDelete(it)}
+                />
+              ))}
+            </section>
+          )}
+        </div>
       </main>
 
       {/* Barra Inferior Mobile (< 1024px) */}
@@ -1271,36 +1352,27 @@ export function DashboardApp() {
               <label className="field-label" htmlFor="item-tab">
                 Aba da estante
               </label>
-              <select
+              <SelectDropdown
                 id="item-tab"
-                className="select-input"
+                ariaLabel="Aba da estante"
                 value={formTabId}
-                onChange={(e) => setFormTabId(e.target.value)}
-              >
-                {tabs.map((tab) => (
-                  <option key={tab.id} value={tab.id}>
-                    {tab.name}
-                  </option>
-                ))}
-              </select>
+                options={tabDropdownOptions}
+                onChange={setFormTabId}
+              />
             </div>
 
             <div className="field-group">
               <label className="field-label" htmlFor="item-status">
                 Status
               </label>
-              <select
+              <SelectDropdown
                 id="item-status"
-                className="select-input"
+                ariaLabel="Status de leitura"
+                align="right"
                 value={formStatus}
-                onChange={(e) => setFormStatus(e.target.value as ReadingStatus)}
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+                options={statusDropdownOptions}
+                onChange={setFormStatus}
+              />
             </div>
           </div>
 
@@ -1647,23 +1719,13 @@ export function DashboardApp() {
                         O que fazer com os {countByTabId.get(editingTab.id)} links salvos
                         nesta aba?
                       </label>
-                      <select
+                      <SelectDropdown
                         id="delete-tab-move-select"
-                        className="select-input"
+                        ariaLabel="Destino dos links ao remover aba"
                         value={deleteTabMoveTo}
-                        onChange={(e) => setDeleteTabMoveTo(e.target.value)}
-                      >
-                        {tabs
-                          .filter((t) => t.id !== editingTab.id)
-                          .map((t) => (
-                            <option key={t.id} value={t.id}>
-                              Mover links para "{t.name}"
-                            </option>
-                          ))}
-                        <option value="__DELETE__">
-                          Apagar tambem todos os links desta aba
-                        </option>
-                      </select>
+                        options={deleteTabMoveOptions}
+                        onChange={setDeleteTabMoveTo}
+                      />
                     </div>
                   ) : (
                     <p className="field-hint">Esta aba esta vazia no momento.</p>
@@ -1735,18 +1797,13 @@ export function DashboardApp() {
             <label className="field-label" htmlFor="batch-target-tab">
               Guardar na aba da estante
             </label>
-            <select
+            <SelectDropdown
               id="batch-target-tab"
-              className="select-input"
+              ariaLabel="Guardar na aba da estante"
               value={batchTargetTabId}
-              onChange={(e) => setBatchTargetTabId(e.target.value)}
-            >
-              {tabs.map((tab) => (
-                <option key={tab.id} value={tab.id}>
-                  {tab.name}
-                </option>
-              ))}
-            </select>
+              options={tabDropdownOptions}
+              onChange={setBatchTargetTabId}
+            />
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

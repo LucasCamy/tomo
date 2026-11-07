@@ -100,11 +100,12 @@ export function suggestCleanTitle(rawTitle: string): string {
   let cleaned = trimmed
     .replace(/\s*[|·•]\s*[^|·•]{2,38}$/u, '')
     .replace(
-      /\s*(?:[-–:]\s*)?(?:ler\s+)?(?:cap[ií]tulo|cap\.?|chapter|ch\.?|epis[oó]dio|ep\.?)\s*#?\s*\d+(?:[.,]\d+)?.*$/iu,
+      /\s*(?:[-–—:]\s*)?(?:ler\s+)?(?:cap[ií]tulo|cap\.?|chapter|ch\.?|epis[oó]dio|ep\.?)\s*#?\s*\d+(?:[.,]\d+)?.*$/iu,
       ''
     )
     .replace(/^(?:ler|assistir)\s+/iu, '')
     .replace(/\s+(?:online|pt-br|em\s+portugu[eê]s|scan|mang[aá]s?)$/iu, '')
+    .replace(/\s*[-–—:|·•]+\s*$/u, '')
     .trim();
 
   if (cleaned.length < 2) {

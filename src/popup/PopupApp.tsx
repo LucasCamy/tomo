@@ -14,7 +14,15 @@ import {
   Sun,
   XCircle,
 } from 'lucide-react';
-import { STATUS_OPTIONS } from '../components/ShelfIcons';
+import {
+  SelectDropdown,
+  type DropdownOption,
+} from '../components/SelectDropdown';
+import {
+  STATUS_OPTIONS,
+  StatusIcon,
+  TabCollectionIcon,
+} from '../components/ShelfIcons';
 import {
   closeBrowserTabs,
   inspectActiveBrowserTab,
@@ -134,6 +142,27 @@ export function PopupApp() {
     if (coverChoice === 'og' && snapshot.ogImageUrl) return snapshot.ogImageUrl;
     return snapshot.capturedDataUrl || snapshot.ogImageUrl;
   }, [snapshot, coverChoice]);
+
+  const tabOptions = useMemo<DropdownOption<string>[]>(
+    () =>
+      tabs.map((tab, idx) => ({
+        value: tab.id,
+        label: idx < 9 ? `${idx + 1}. ${tab.name}` : tab.name,
+        icon: <TabCollectionIcon name={tab.icon} size={15} />,
+      })),
+    [tabs]
+  );
+
+  const statusOptions = useMemo<DropdownOption<ReadingStatus>[]>(
+    () =>
+      STATUS_OPTIONS.map((opt) => ({
+        value: opt.value,
+        label: opt.label,
+        tone: opt.tone,
+        icon: <StatusIcon status={opt.value} size={15} />,
+      })),
+    []
+  );
 
   const handleToggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
@@ -337,7 +366,8 @@ export function PopupApp() {
   ]);
 
   return (
-    <main className="popup-shell">
+    <div className="popup-scroll-wrap">
+      <main className="popup-shell">
       <header className="popup-header">
         <div className="brand-mark">
           <span className="brand-icon" aria-hidden="true">
@@ -502,7 +532,7 @@ export function PopupApp() {
             event.preventDefault();
             handleSaveNewItem(false);
           }}
-          style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+          style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
         >
           {snapshot ? (
             <div className="popup-cover-preview">
@@ -685,21 +715,17 @@ export function PopupApp() {
                 </button>
               </div>
             ) : (
-              <select
+              <SelectDropdown
                 id="popup-tab-select"
-                className="select-input"
+                ariaLabel="Aba ou colecao"
+                size="compact"
                 value={selectedTabId}
-                onChange={(e) => {
-                  setSelectedTabId(e.target.value);
-                  setPreferredTabId(e.target.value);
+                options={tabOptions}
+                onChange={(nextId) => {
+                  setSelectedTabId(nextId);
+                  setPreferredTabId(nextId);
                 }}
-              >
-                {tabs.map((tab, idx) => (
-                  <option key={tab.id} value={tab.id}>
-                    {idx < 9 ? `${idx + 1}. ${tab.name}` : tab.name}
-                  </option>
-                ))}
-              </select>
+              />
             )}
           </div>
 
@@ -733,18 +759,15 @@ export function PopupApp() {
               <label className="field-label" htmlFor="popup-status">
                 Status
               </label>
-              <select
+              <SelectDropdown
                 id="popup-status"
-                className="select-input"
+                ariaLabel="Status de leitura"
+                size="compact"
+                align="right"
                 value={status}
-                onChange={(e) => setStatus(e.target.value as ReadingStatus)}
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+                options={statusOptions}
+                onChange={setStatus}
+              />
             </div>
           </div>
 
@@ -838,6 +861,7 @@ export function PopupApp() {
           <Keyboard size={14} aria-hidden="true" />
         </button>
       </footer>
-    </main>
+      </main>
+    </div>
   );
 }
