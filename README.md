@@ -26,7 +26,7 @@ Funciona no **Google Chrome**, **Brave**, **Microsoft Edge**, **Opera** e **Viva
 
 ### 1. Baixe e extraia o pacote pronto
 1. Acesse a pagina de [**Releases do Tomo**](https://github.com/LucasCamy/tomo/releases/latest).
-2. Em **Assets** (no fim da nota da versao), clique em **`tomo-chrome-v1.1.0.zip`** (ou a versao mais recente) para baixar.
+2. Em **Assets** (no fim da nota da versao), clique em **`tomo-chrome-v1.2.0.zip`** (ou a versao mais recente) para baixar.
 3. Clique com o botao direito no arquivo `.zip` baixado e escolha **Extrair Tudo...** (*Extract All*).
 4. Salve a pasta extraida em um local fixo do seu PC (por exemplo: `Documentos/Tomo`).
    > **Importante:** nao apague nem mova essa pasta depois de instalar, pois o navegador carrega a extensao diretamente dela.
@@ -49,10 +49,12 @@ Funciona no **Google Chrome**, **Brave**, **Microsoft Edge**, **Opera** e **Viva
 
 ## Como atualizar quando sair versao nova (sem perder seus links)
 
-1. Por seguranca extra (opcional), abra a Estante do Tomo e clique em **Exportar** no canto inferior esquerdo para guardar uma copia `.json`.
-2. Baixe o novo `tomo-chrome-v*.zip` em [**Releases**](https://github.com/LucasCamy/tomo/releases/latest).
+Voce pode conferir e aplicar atualizacoes direto pela propria Estante do Tomo:
+
+1. Abra a Estante e clique no botao **Atualizar** (no topo) ou **Sincronizar e Atualizar** (no canto inferior esquerdo).
+2. Clique em **Verificar nova versao**. Se houver atualizacao, clique no botao **Baixar `tomo-chrome-v*.zip`** que aparece na janela.
 3. Extraia os arquivos novos **dentro da mesma pasta** onde voce instalou antes, substituindo os arquivos antigos.
-4. Abra `chrome://extensions/` e clique no icone de **Recarregar** (seta circular) no card do **Tomo**.
+4. Volte na janela da Estante e clique em **Aplicar e recarregar extensao** (nao precisa nem abrir `chrome://extensions/`).
    - Como a pasta continua no mesmo caminho, o navegador mantem o mesmo ID da extensao e **todos os seus mangas, capas e abas continuam salvos intactos**.
 
 ---
@@ -69,8 +71,11 @@ Funciona no **Google Chrome**, **Brave**, **Microsoft Edge**, **Opera** e **Viva
   - Botao `+1` direto na capa do card para somar capitulos rapidamente.
   - **Guardar abas abertas:** importa varias abas abertas da janela do Chrome de uma so vez e fecha todas automaticamente.
   - Busca instantanea, filtros por status (`Lendo`, `Em dia`, `Pausado`, `Concluido`), ordenacao, modo Galeria ou Compacto e alternancia entre **Tema Escuro** e **Tema Claro**.
-- **Backup 100% local (`.json`):**
-  - Exporte toda a sua estante para um arquivo `.json` e importe em outro computador escolhendo entre **Mesclar** ou **Substituir**.
+- **Backup 100% local e sincronizacao automatica (`.json`):**
+  - Vincule um arquivo `tomo-backup.json` fixo no seu computador (por exemplo em `Documentos`, OneDrive ou Google Drive) para que toda mudanca na Estante atualize esse arquivo sozinha, sem gerar copias repetidas em `Downloads`.
+  - Exporte ou importe backups a qualquer momento escolhendo entre **Mesclar** ou **Substituir**.
+- **Verificacao de nova versao em 1 clique:**
+  - Confira direto na Estante se saiu versao nova em GitHub Releases e recarregue a extensao em 1 clique apos atualizar a pasta.
 
 ---
 
@@ -111,7 +116,7 @@ Funciona no **Google Chrome**, **Brave**, **Microsoft Edge**, **Opera** e **Viva
 
 ## Privacidade e Seguranca
 
-- **Zero servidores externos:** nenhum historico, URL, nota ou imagem sai da sua maquina.
+- **Dados 100% locais:** nenhum historico, URL, nota ou imagem sai da sua maquina. A consulta de nova versao no GitHub ocorre apenas se voce clicar em **Verificar nova versao**, sem enviar credenciais nem links salvos (veja [ADR-0001](docs/adr/0001-sincronizacao-local-e-verificacao-de-atualizacao.md)).
 - **Validacao local:** backups `.json` importados passam por validacao de estrutura e bloqueio de esquemas inseguros (aceitando apenas links `http://` e `https://`).
 
 ---

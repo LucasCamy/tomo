@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Tomo · Estante Visual de Links",
   "short_name": "Tomo",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Organize leituras, mangas e referencias por abas com capa automatica, atalhos rapidos de teclado, controle de capitulo e backup JSON.",
   "permissions": [
     "activeTab",

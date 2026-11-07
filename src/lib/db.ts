@@ -100,6 +100,39 @@ function getMetaFlag(store: IDBObjectStore, key: string): Promise<boolean> {
   });
 }
 
+export async function getMetaValue<T>(key: string): Promise<T | undefined> {
+  const db = await openShelfDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_META, 'readonly');
+    const req = tx.objectStore(STORE_META).get(key);
+    req.onsuccess = () => {
+      const entry = req.result as { key: string; value?: T } | undefined;
+      resolve(entry?.value);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function setMetaValue<T>(key: string, value: T): Promise<void> {
+  const db = await openShelfDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_META, 'readwrite');
+    tx.objectStore(STORE_META).put({ key, value });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function deleteMetaValue(key: string): Promise<void> {
+  const db = await openShelfDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_META, 'readwrite');
+    tx.objectStore(STORE_META).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 export async function loadShelfState(): Promise<{
   tabs: CollectionTab[];
   items: SavedLinkItem[];

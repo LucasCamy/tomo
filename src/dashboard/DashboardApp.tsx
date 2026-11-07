@@ -8,20 +8,25 @@ import {
   CircleCheck,
   Clock,
   Download,
+  ExternalLink,
   FolderInput,
   FolderPlus,
   Grid2x2,
+  HardDrive,
   Keyboard,
   Layers,
+  Link2,
   List,
   Moon,
   Plus,
   RefreshCw,
+  RotateCw,
   Search,
   Settings2,
   Sparkles,
   Sun,
   Trash2,
+  Unlink,
   Upload,
   X,
 } from 'lucide-react';
@@ -70,7 +75,23 @@ import {
   setPreferredTabId,
   type ExtensionShortcutInfo,
 } from '../lib/shortcuts';
+import {
+  getLinkedBackupStatus,
+  isFileSyncSupported,
+  pickAndLinkBackupFile,
+  pullFromLinkedBackupFile,
+  syncToLinkedBackupFile,
+  unlinkBackupFile,
+  type LinkedBackupStatus,
+} from '../lib/fileSync';
 import { applyTheme, getInitialTheme, type ThemeMode } from '../lib/theme';
+import {
+  GITHUB_RELEASES_PAGE,
+  checkGitHubReleaseUpdate,
+  getCurrentExtensionVersion,
+  triggerExtensionReload,
+  type UpdateCheckResult,
+} from '../lib/updater';
 import type {
   BrowserTabSnapshot,
   CollectionTab,
@@ -170,6 +191,26 @@ export function DashboardApp() {
     []
   );
 
+  // Modal Sincronizacao Local (.json) e Atualizacao (GitHub Releases)
+  const extVersion = useMemo(() => getCurrentExtensionVersion(), []);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [linkedBackup, setLinkedBackup] = useState<LinkedBackupStatus>(() => ({
+    supported: isFileSyncSupported(),
+    linked: false,
+    permission: isFileSyncSupported() ? 'prompt' : 'unsupported',
+  }));
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<{
+    tone: 'success' | 'warning' | 'error';
+    message: string;
+  } | null>(null);
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(
+    null
+  );
+  const [updateError, setUpdateError] = useState('');
+  const prevShelfFingerprintRef = useRef<string | null>(null);
+
   const refreshShelf = useCallback(async () => {
     const state = await loadShelfState();
     setTabs(state.tabs);
@@ -179,10 +220,54 @@ export function DashboardApp() {
 
   useEffect(() => {
     refreshShelf();
+    getLinkedBackupStatus().then(setLinkedBackup);
     return subscribeShelfUpdates(() => {
       refreshShelf();
     });
   }, [refreshShelf]);
+
+  const shelfFingerprint = useMemo(() => {
+    if (loading) return '';
+    const tabSig = tabs
+      .map((t) => `${t.id}:${t.order}:${t.updatedAt}`)
+      .join('|');
+    const itemSig = items
+      .map((i) => `${i.id}:${i.tabId}:${i.updatedAt}`)
+      .join('|');
+    return `${tabSig}##${itemSig}`;
+  }, [loading, tabs, items]);
+
+  // Gravacao automatica no arquivo .json vinculado sempre que a estante mudar
+  useEffect(() => {
+    if (loading || !shelfFingerprint) return;
+
+    if (prevShelfFingerprintRef.current === null) {
+      prevShelfFingerprintRef.current = shelfFingerprint;
+      return;
+    }
+
+    if (prevShelfFingerprintRef.current === shelfFingerprint) {
+      return;
+    }
+
+    prevShelfFingerprintRef.current = shelfFingerprint;
+
+    if (!linkedBackup.linked || linkedBackup.permission !== 'granted') {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      syncToLinkedBackupFile({ requestPermission: false })
+        .then((res) => {
+          setLinkedBackup(res.status);
+        })
+        .catch(() => {
+          // mantem estado atual sem interromper uso caso o arquivo esteja bloqueado
+        });
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [loading, shelfFingerprint, linkedBackup.linked, linkedBackup.permission]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -213,6 +298,13 @@ export function DashboardApp() {
     setShortcutsModalOpen(true);
   }, []);
 
+  const openSyncModal = useCallback(async () => {
+    setSyncFeedback(null);
+    const status = await getLinkedBackupStatus();
+    setLinkedBackup(status);
+    setSyncModalOpen(true);
+  }, []);
+
   const anyModalOpen =
     itemModalOpen ||
     Boolean(quickStopItem) ||
@@ -220,7 +312,8 @@ export function DashboardApp() {
     batchModalOpen ||
     importModalOpen ||
     Boolean(itemPendingDelete) ||
-    shortcutsModalOpen;
+    shortcutsModalOpen ||
+    syncModalOpen;
 
   // Atalhos rapidos de teclado na Estante ('/', 'n', 'g', '0..9', '?')
   useEffect(() => {
@@ -765,6 +858,149 @@ export function DashboardApp() {
     }
   };
 
+  // Sincronizacao local automatica (.json fixo) e verificacao de versao (GitHub)
+  const formatSyncTimestamp = (iso?: string): string => {
+    if (!iso) return '';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const handlePickBackupFile = async () => {
+    setSyncBusy(true);
+    setSyncFeedback(null);
+    try {
+      const status = await pickAndLinkBackupFile();
+      if (!status) return;
+      setLinkedBackup(status);
+      setSyncFeedback({
+        tone: 'success',
+        message: `Arquivo "${status.fileName}" vinculado e atualizado automaticamente.`,
+      });
+      showBanner(
+        `Backup automatico ativado em "${status.fileName}".`
+      );
+    } catch (err) {
+      setSyncFeedback({
+        tone: 'error',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Nao foi possivel vincular o arquivo local.',
+      });
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
+  const handleManualSyncToLinkedFile = async (fromSidebar = false) => {
+    setSyncBusy(true);
+    setSyncFeedback(null);
+    try {
+      const result = await syncToLinkedBackupFile({ requestPermission: true });
+      setLinkedBackup(result.status);
+      if (result.synced) {
+        const msg = `Backup atualizado em "${result.status.fileName ?? 'arquivo local'}".`;
+        if (fromSidebar) {
+          showBanner(msg);
+        } else {
+          setSyncFeedback({ tone: 'success', message: msg });
+        }
+      } else if (result.needsPermission) {
+        const warnMsg =
+          'Permissao de gravacao nao concedida. Autorize o acesso ao arquivo para ativar.';
+        if (fromSidebar) {
+          setSyncModalOpen(true);
+        }
+        setSyncFeedback({ tone: 'warning', message: warnMsg });
+      }
+    } catch (err) {
+      const errMsg =
+        err instanceof Error
+          ? err.message
+          : 'Falha ao gravar no arquivo vinculado.';
+      if (fromSidebar) {
+        setSyncModalOpen(true);
+      }
+      setSyncFeedback({ tone: 'error', message: errMsg });
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
+  const handlePullFromLinkedFile = async () => {
+    setSyncBusy(true);
+    setSyncFeedback(null);
+    try {
+      const summary = await pullFromLinkedBackupFile('merge');
+      await refreshShelf();
+      const msg = `Leitura concluida: ${summary.itemsImported} novos links, ${summary.itemsUpdated} verificados/atualizados.`;
+      setSyncFeedback({ tone: 'success', message: msg });
+      showBanner(msg);
+    } catch (err) {
+      setSyncFeedback({
+        tone: 'error',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Nao foi possivel ler o arquivo vinculado.',
+      });
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
+  const handleUnlinkBackupFile = async () => {
+    setSyncBusy(true);
+    setSyncFeedback(null);
+    try {
+      await unlinkBackupFile();
+      const fresh = await getLinkedBackupStatus();
+      setLinkedBackup(fresh);
+      setSyncFeedback({
+        tone: 'warning',
+        message: 'Vinculo automatico removido. Seus links continuam salvos nesta maquina.',
+      });
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
+  const handleCheckUpdate = async () => {
+    setUpdateChecking(true);
+    setUpdateError('');
+    try {
+      const result = await checkGitHubReleaseUpdate();
+      setUpdateResult(result);
+    } catch (err) {
+      setUpdateError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao consultar versoes no GitHub.'
+      );
+    } finally {
+      setUpdateChecking(false);
+    }
+  };
+
+  const handleReloadExtension = async () => {
+    await triggerExtensionReload();
+  };
+
+  const syncAttentionDot =
+    updateResult?.hasUpdate
+      ? 'action'
+      : linkedBackup.linked && linkedBackup.permission !== 'granted'
+        ? 'warning'
+        : linkedBackup.linked && linkedBackup.permission === 'granted'
+          ? 'success'
+          : null;
+
   return (
     <div className="shelf-shell">
       {/* Barra superior e trilho de abas para telas estreitas (< 1024px) */}
@@ -782,6 +1018,15 @@ export function DashboardApp() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-icon"
+            onClick={openSyncModal}
+            aria-label="Sincronizar backup e verificar atualizacao"
+            title="Sincronizar backup e verificar versao"
+          >
+            <RefreshCw size={18} aria-hidden="true" />
+          </button>
           <button
             type="button"
             className="btn btn-secondary btn-icon"
@@ -940,12 +1185,71 @@ export function DashboardApp() {
 
         <div className="sidebar-footer">
           <div className="local-status-box">
-            <strong>Salvo nesta maquina</strong>
+            <div className="local-status-header">
+              <strong>Salvo nesta maquina</strong>
+              <span className="version-pill font-data">v{extVersion}</span>
+            </div>
             <span className="font-data">
               {items.length} {items.length === 1 ? 'link salvo' : 'links salvos'} em{' '}
               {tabs.length} {tabs.length === 1 ? 'aba' : 'abas'}
             </span>
+            {linkedBackup.linked ? (
+              <div
+                className={`local-sync-indicator ${
+                  linkedBackup.permission === 'granted'
+                    ? 'local-sync-indicator--active'
+                    : 'local-sync-indicator--pending'
+                }`}
+              >
+                {linkedBackup.permission === 'granted' ? (
+                  <CircleCheck size={13} aria-hidden="true" />
+                ) : (
+                  <AlertCircle size={13} aria-hidden="true" />
+                )}
+                <span className="font-data">
+                  {linkedBackup.permission === 'granted'
+                    ? `Auto: ${linkedBackup.fileName}`
+                    : `Reativar: ${linkedBackup.fileName}`}
+                </span>
+              </div>
+            ) : null}
           </div>
+
+          {linkedBackup.linked ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={syncBusy}
+              onClick={() => handleManualSyncToLinkedFile(true)}
+              title="Gravar estante agora no arquivo .json vinculado"
+            >
+              <RefreshCw
+                size={15}
+                className={syncBusy ? 'is-spinning' : undefined}
+                aria-hidden="true"
+              />
+              <span>
+                {linkedBackup.permission === 'granted'
+                  ? 'Gravar no backup agora'
+                  : 'Reativar backup automatico'}
+              </span>
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            className="btn btn-surface"
+            onClick={openSyncModal}
+          >
+            <RefreshCw size={15} aria-hidden="true" />
+            <span>Sincronizar e Atualizar</span>
+            {syncAttentionDot ? (
+              <span
+                className={`btn-status-dot btn-status-dot--${syncAttentionDot}`}
+                aria-hidden="true"
+              />
+            ) : null}
+          </button>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <button
@@ -1012,6 +1316,22 @@ export function DashboardApp() {
             </div>
 
             <div className="shelf-header-actions">
+              <button
+                type="button"
+                className="btn btn-surface"
+                onClick={openSyncModal}
+                title="Sincronizar arquivo local .json e verificar nova versao no GitHub"
+              >
+                <RefreshCw size={16} aria-hidden="true" />
+                <span>Atualizar</span>
+                {syncAttentionDot ? (
+                  <span
+                    className={`btn-status-dot btn-status-dot--${syncAttentionDot}`}
+                    aria-hidden="true"
+                  />
+                ) : null}
+              </button>
+
               <button
                 type="button"
                 className="btn btn-surface"
@@ -2129,6 +2449,318 @@ export function DashboardApp() {
               <kbd className="kbd-badge">0..9</kbd>
             </div>
           </div>
+        </div>
+      </ModalDialog>
+
+      {/* MODAL 8: Sincronizacao Automatica Local (.json) e Atualizacao via GitHub */}
+      <ModalDialog
+        open={syncModalOpen}
+        title="Sincronizacao e Atualizacao"
+        onClose={() => setSyncModalOpen(false)}
+        footer={
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setSyncModalOpen(false)}
+          >
+            Fechar
+          </button>
+        }
+      >
+        <div className="sync-modal-stack">
+          {/* Secao 1: Backup Automatico em Arquivo Fixo no PC */}
+          <section className="sync-section" aria-label="Backup automatico no computador">
+            <h3 className="shortcuts-section-title">
+              1. Backup automatico no computador (.json fixo)
+            </h3>
+            <p className="field-hint">
+              Vincule um arquivo <code>.json</code> em uma pasta fixa (como{' '}
+              <code>Documentos</code>, OneDrive ou Google Drive). Enquanto ativo, toda
+              alteracao na estante grava nesse mesmo arquivo sem gerar copias repetidas.
+            </p>
+
+            <div className="sync-status-card">
+              {!linkedBackup.supported ? (
+                <div className="sync-alert sync-alert--warning" role="status">
+                  <div className="sync-alert-head">
+                    <AlertCircle size={16} aria-hidden="true" />
+                    <span>Gravacao direta indisponivel neste navegador</span>
+                  </div>
+                  <p className="field-hint">
+                    Use os botoes Exportar e Importar na barra lateral para salvar ou
+                    restaurar seu arquivo .json.
+                  </p>
+                </div>
+              ) : !linkedBackup.linked ? (
+                <>
+                  <div className="sync-status-row">
+                    <div className="sync-badge-line sync-badge-line--muted">
+                      <HardDrive size={16} aria-hidden="true" />
+                      <span>Nenhum arquivo fixo vinculado</span>
+                    </div>
+                  </div>
+                  <p className="field-hint">
+                    Escolha uma unica vez onde criar ou apontar seu arquivo{' '}
+                    <code>tomo-backup.json</code>.
+                  </p>
+                  <div className="sync-actions-wrap">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={syncBusy}
+                      onClick={handlePickBackupFile}
+                    >
+                      <Link2 size={15} aria-hidden="true" />
+                      <span>Escolher arquivo .json fixo</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="sync-status-row">
+                    {linkedBackup.permission === 'granted' ? (
+                      <div className="sync-badge-line sync-badge-line--success">
+                        <CircleCheck size={16} aria-hidden="true" />
+                        <span>Sincronizacao automatica ativa</span>
+                      </div>
+                    ) : linkedBackup.permission === 'denied' ? (
+                      <div className="sync-badge-line sync-badge-line--danger">
+                        <AlertCircle size={16} aria-hidden="true" />
+                        <span>Permissao negada pelo navegador</span>
+                      </div>
+                    ) : (
+                      <div className="sync-badge-line sync-badge-line--warning">
+                        <AlertCircle size={16} aria-hidden="true" />
+                        <span>Reativacao pendente nesta sessao</span>
+                      </div>
+                    )}
+
+                    <span className="version-pill font-data">
+                      {linkedBackup.fileName}
+                    </span>
+                  </div>
+
+                  {linkedBackup.lastSyncedAt ? (
+                    <p className="field-hint font-data">
+                      Ultima gravacao: {formatSyncTimestamp(linkedBackup.lastSyncedAt)}
+                    </p>
+                  ) : null}
+
+                  {linkedBackup.permission !== 'granted' ? (
+                    <p className="field-hint">
+                      Apos reiniciar o navegador, clique em{' '}
+                      <strong>Gravar agora</strong> para confirmar a permissao e retomar o
+                      salvamento automatico.
+                    </p>
+                  ) : null}
+
+                  <div className="sync-actions-wrap">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={syncBusy}
+                      onClick={() => handleManualSyncToLinkedFile(false)}
+                    >
+                      <RefreshCw
+                        size={14}
+                        className={syncBusy ? 'is-spinning' : undefined}
+                        aria-hidden="true"
+                      />
+                      <span>Gravar agora</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={syncBusy}
+                      onClick={handlePullFromLinkedFile}
+                      title="Mesclar links mais recentes vindos deste arquivo"
+                    >
+                      <Upload size={14} aria-hidden="true" />
+                      <span>Ler do arquivo (Mesclar)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={syncBusy}
+                      onClick={handlePickBackupFile}
+                    >
+                      <Link2 size={14} aria-hidden="true" />
+                      <span>Trocar arquivo</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      disabled={syncBusy}
+                      onClick={handleUnlinkBackupFile}
+                    >
+                      <Unlink size={14} aria-hidden="true" />
+                      <span>Desvincular</span>
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {syncFeedback ? (
+                <div
+                  className={
+                    syncFeedback.tone === 'error'
+                      ? 'field-error'
+                      : `sync-alert sync-alert--${syncFeedback.tone}`
+                  }
+                  role={syncFeedback.tone === 'error' ? 'alert' : 'status'}
+                >
+                  <div className="sync-alert-head">
+                    {syncFeedback.tone === 'success' ? (
+                      <CircleCheck size={16} aria-hidden="true" />
+                    ) : (
+                      <AlertCircle size={16} aria-hidden="true" />
+                    )}
+                    <span>{syncFeedback.message}</span>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          {/* Secao 2: Verificacao de Nova Versao no GitHub + Recarregar Extensao */}
+          <section className="sync-section" aria-label="Atualizacao da extensao">
+            <h3 className="shortcuts-section-title">
+              2. Versao da extensao (GitHub Releases)
+            </h3>
+            <p className="field-hint">
+              Consulta publica sob demanda ao repositorio oficial para conferir se saiu
+              uma versao nova. Nenhum link salvo ou dado pessoal e enviado.
+            </p>
+
+            <div className="sync-status-card">
+              <div className="sync-status-row">
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>
+                    Versao instalada nesta maquina
+                  </div>
+                  <div className="field-hint font-data">v{extVersion}</div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={updateChecking}
+                  onClick={handleCheckUpdate}
+                >
+                  <RefreshCw
+                    size={14}
+                    className={updateChecking ? 'is-spinning' : undefined}
+                    aria-hidden="true"
+                  />
+                  <span>
+                    {updateChecking ? 'Verificando...' : 'Verificar nova versao'}
+                  </span>
+                </button>
+              </div>
+
+              {updateError ? (
+                <div className="field-error" role="alert">
+                  <AlertCircle size={16} aria-hidden="true" />
+                  <div style={{ flex: 1 }}>
+                    <div>{updateError}</div>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ marginTop: 6 }}
+                      onClick={() => openExternalLink(GITHUB_RELEASES_PAGE)}
+                    >
+                      <ExternalLink size={14} aria-hidden="true" />
+                      <span>Abrir GitHub Releases manualmente</span>
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {updateResult && !updateResult.hasUpdate ? (
+                <div className="sync-alert sync-alert--success" role="status">
+                  <div className="sync-alert-head">
+                    <CircleCheck size={16} aria-hidden="true" />
+                    <span>
+                      Extensao em dia (v{updateResult.currentVersion})
+                    </span>
+                  </div>
+                  <p className="field-hint font-data">
+                    Ultima versao publicada no GitHub: v{updateResult.latestVersion}
+                  </p>
+                </div>
+              ) : null}
+
+              {updateResult && updateResult.hasUpdate ? (
+                <div className="sync-alert sync-alert--action" role="status">
+                  <div className="sync-alert-head">
+                    <Sparkles size={16} aria-hidden="true" />
+                    <span>
+                      Nova versao v{updateResult.latestVersion} disponivel!
+                    </span>
+                  </div>
+
+                  <ol className="sync-steps-list">
+                    <li>
+                      Clique em <strong>Baixar pacote .zip</strong> abaixo;
+                    </li>
+                    <li>
+                      Extraia os arquivos dentro da <strong>mesma pasta</strong> onde voce
+                      instalou o Tomo (substituindo os antigos);
+                    </li>
+                    <li>
+                      Clique em <strong>Aplicar e recarregar extensao</strong> para ativar
+                      sem perder seus links.
+                    </li>
+                  </ol>
+
+                  <div className="sync-actions-wrap">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() =>
+                        openExternalLink(
+                          updateResult.zipDownloadUrl ?? updateResult.releaseUrl
+                        )
+                      }
+                    >
+                      <Download size={14} aria-hidden="true" />
+                      <span>
+                        Baixar{' '}
+                        {updateResult.zipAssetName ??
+                          `tomo-chrome-v${updateResult.latestVersion}.zip`}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => openExternalLink(updateResult.releaseUrl)}
+                    >
+                      <ExternalLink size={14} aria-hidden="true" />
+                      <span>Ver notas da versao</span>
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="sync-reload-bar">
+                <span className="field-hint">
+                  Ja extraiu os arquivos novos na pasta da extensao?
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-surface btn-sm"
+                  onClick={handleReloadExtension}
+                >
+                  <RotateCw size={14} aria-hidden="true" />
+                  <span>Aplicar e recarregar extensao</span>
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
       </ModalDialog>
     </div>

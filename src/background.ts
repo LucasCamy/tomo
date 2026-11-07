@@ -12,6 +12,8 @@ import {
 } from './lib/progress';
 
 const PREFERRED_TAB_KEY = 'tomo_preferred_tab_id';
+const REOPEN_DASHBOARD_STORAGE_KEY = 'tomo_reopen_dashboard_ts';
+let reopenCheckInFlight = false;
 
 async function getWorkerPreferredTabId(fallbackId: string): Promise<string> {
   try {
@@ -349,6 +351,29 @@ async function handleQuickSaveShortcut(closeAfter: boolean): Promise<void> {
     `${created.title} · ${tabName}${created.progressLabel ? ` · ${created.progressLabel}` : ''}`
   );
 }
+
+async function consumePendingDashboardReopen(): Promise<void> {
+  if (reopenCheckInFlight) return;
+  reopenCheckInFlight = true;
+  try {
+    const stored = await chrome.storage.local.get(REOPEN_DASHBOARD_STORAGE_KEY);
+    const ts = stored?.[REOPEN_DASHBOARD_STORAGE_KEY];
+    if (typeof ts === 'number' && Date.now() - ts < 30_000) {
+      await chrome.storage.local.remove(REOPEN_DASHBOARD_STORAGE_KEY);
+      await openOrFocusDashboard();
+    }
+  } catch {
+    // ignora falha de storage
+  } finally {
+    reopenCheckInFlight = false;
+  }
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  consumePendingDashboardReopen().catch(() => {});
+});
+
+consumePendingDashboardReopen().catch(() => {});
 
 chrome.commands.onCommand.addListener((command) => {
   if (command === 'quick-save-tab') {

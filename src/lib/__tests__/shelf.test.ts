@@ -9,6 +9,12 @@ import {
 } from '../backup';
 import { getExtensionShortcuts } from '../shortcuts';
 import {
+  compareSemver,
+  parseSemver,
+  sanitizeGitHubReleaseUrl,
+  validateGitHubReleasePayload,
+} from '../updater';
+import {
   detectProgressFromTab,
   findMatchingSavedItem,
   sanitizeHttpUrl,
@@ -254,6 +260,77 @@ describe('keyboard shortcuts & Manifest V3 commands', () => {
         /^(Ctrl|Alt)(\+Shift)?\+[A-Z0-9]$/
       );
     }
+  });
+});
+
+describe('version comparison & GitHub release payload validation', () => {
+  it('parses and compares SemVer versions accurately', () => {
+    expect(parseSemver('v1.2.0')).toEqual([1, 2, 0]);
+    expect(parseSemver('1.10.3-beta.1')).toEqual([1, 10, 3]);
+    expect(parseSemver('invalido')).toBeNull();
+
+    expect(compareSemver('1.1.0', 'v1.2.0')).toBe(1);
+    expect(compareSemver('1.2.0', 'v1.2.0')).toBe(0);
+    expect(compareSemver('1.2.0', 'v1.1.9')).toBe(-1);
+  });
+
+  it('accepts only official repository HTTPS URLs and blocks external domains', () => {
+    expect(
+      sanitizeGitHubReleaseUrl(
+        'https://github.com/LucasCamy/tomo/releases/download/v1.2.0/tomo-chrome-v1.2.0.zip'
+      )
+    ).toBe(
+      'https://github.com/LucasCamy/tomo/releases/download/v1.2.0/tomo-chrome-v1.2.0.zip'
+    );
+
+    expect(
+      sanitizeGitHubReleaseUrl('https://evil.example.com/LucasCamy/tomo/malicious.zip')
+    ).toBeNull();
+    expect(
+      sanitizeGitHubReleaseUrl('https://github.com/outro-autor/tomo/releases/v1.2.0.zip')
+    ).toBeNull();
+    expect(sanitizeGitHubReleaseUrl('javascript:alert(1)')).toBeNull();
+  });
+
+  it('validates GitHub release payload for updates and ignores untrusted zip assets', () => {
+    const updatePayload = validateGitHubReleasePayload(
+      {
+        tag_name: 'v1.3.0',
+        html_url: 'https://github.com/LucasCamy/tomo/releases/tag/v1.3.0',
+        published_at: '2026-11-06T22:00:00Z',
+        body: 'Novidades — sincronizacao automatica',
+        assets: [
+          {
+            name: 'malicioso.zip',
+            browser_download_url: 'https://atacante.exemplo/malicioso.zip',
+          },
+          {
+            name: 'tomo-chrome-v1.3.0.zip',
+            browser_download_url:
+              'https://github.com/LucasCamy/tomo/releases/download/v1.3.0/tomo-chrome-v1.3.0.zip',
+          },
+        ],
+      },
+      '1.2.0'
+    );
+
+    expect(updatePayload.hasUpdate).toBe(true);
+    expect(updatePayload.latestVersion).toBe('1.3.0');
+    expect(updatePayload.zipAssetName).toBe('tomo-chrome-v1.3.0.zip');
+    expect(updatePayload.zipDownloadUrl).toBe(
+      'https://github.com/LucasCamy/tomo/releases/download/v1.3.0/tomo-chrome-v1.3.0.zip'
+    );
+    expect(updatePayload.releaseNotes).not.toContain('\u2014');
+
+    const upToDatePayload = validateGitHubReleasePayload(
+      {
+        tag_name: 'v1.1.0',
+        html_url: 'https://github.com/LucasCamy/tomo/releases/tag/v1.1.0',
+        assets: [],
+      },
+      '1.2.0'
+    );
+    expect(upToDatePayload.hasUpdate).toBe(false);
   });
 });
 

@@ -1,7 +1,7 @@
 {
   "name": "tomo-extension",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Extensao Chrome local para organizar links e leituras por abas com capa automatica, progresso de capitulo e backup JSON.",
   "type": "module",
   "scripts": {
