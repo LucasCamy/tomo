@@ -8,6 +8,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { SavedLinkItem } from '../types/shelf';
+import { extractNumericProgress } from '../lib/progress';
 import { StatusBadge } from './ShelfIcons';
 
 interface LinkCardProps {
@@ -16,6 +17,7 @@ interface LinkCardProps {
   showTabBadge: boolean;
   onOpenLink: (item: SavedLinkItem) => void;
   onStepProgress: (item: SavedLinkItem, delta: number) => void;
+  onCycleStatus: (item: SavedLinkItem) => void;
   onTogglePin: (item: SavedLinkItem) => void;
   onQuickUpdateStop: (item: SavedLinkItem) => void;
   onEdit: (item: SavedLinkItem) => void;
@@ -60,6 +62,7 @@ export function LinkCard({
   showTabBadge,
   onOpenLink,
   onStepProgress,
+  onCycleStatus,
   onTogglePin,
   onQuickUpdateStop,
   onEdit,
@@ -69,6 +72,8 @@ export function LinkCard({
   const [faviconBroken, setFaviconBroken] = useState(false);
 
   const hasValidCover = Boolean(item.coverImage) && !coverBroken;
+  const numericProgress = extractNumericProgress(item.progressLabel);
+  const canDecrement = numericProgress === null || numericProgress > 0;
 
   return (
     <article className={`link-card ${item.pinned ? 'is-pinned' : ''}`}>
@@ -89,7 +94,11 @@ export function LinkCard({
         )}
 
         <div className="card-top-badges">
-          <StatusBadge status={item.status} />
+          <StatusBadge
+            status={item.status}
+            itemTitle={item.title}
+            onClick={() => onCycleStatus(item)}
+          />
           <button
             type="button"
             className={`pin-btn ${item.pinned ? 'is-pinned' : ''}`}
@@ -105,6 +114,18 @@ export function LinkCard({
         {item.progressLabel ? (
           <div className="card-progress-bar">
             <div className="progress-pill-group">
+              {numericProgress !== null ? (
+                <button
+                  type="button"
+                  className="progress-step-btn progress-step-btn--prev"
+                  disabled={!canDecrement}
+                  onClick={() => onStepProgress(item, -1)}
+                  aria-label={`Voltar progresso de ${item.title} em 1`}
+                  title="Voltar -1 capitulo"
+                >
+                  -1
+                </button>
+              ) : null}
               <span className="progress-pill-label">{item.progressLabel}</span>
               <button
                 type="button"

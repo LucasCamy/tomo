@@ -4,7 +4,7 @@ export const GITHUB_LATEST_RELEASE_API =
   'https://api.github.com/repos/LucasCamy/tomo/releases/latest';
 export const REOPEN_DASHBOARD_STORAGE_KEY = 'tomo_reopen_dashboard_ts';
 
-const FALLBACK_EXTENSION_VERSION = '1.2.0';
+const FALLBACK_EXTENSION_VERSION = '1.3.0';
 const ALLOWED_REPO_PATH_PREFIX = '/LucasCamy/tomo/';
 
 export interface UpdateCheckResult {

@@ -2,6 +2,7 @@ import type { BrowserTabSnapshot } from '../types/shelf';
 import {
   detectProgressFromTab,
   extractDomain,
+  sanitizeCoverSource,
   sanitizeHttpUrl,
   suggestCleanTitle,
 } from './progress';
@@ -12,6 +13,26 @@ export function isChromeExtensionEnv(): boolean {
     Boolean(chrome.runtime?.id) &&
     Boolean(chrome.tabs)
   );
+}
+
+export async function compressImageBlobToCoverDataUrl(
+  blob: Blob,
+  maxWidth = 520,
+  maxHeight = 325
+): Promise<string | undefined> {
+  if (!blob.type.startsWith('image/') && blob.size === 0) return undefined;
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        resolve(undefined);
+        return;
+      }
+      compressDataUrlToThumbnail(reader.result, maxWidth, maxHeight).then(resolve);
+    };
+    reader.onerror = () => resolve(undefined);
+    reader.readAsDataURL(blob);
+  });
 }
 
 async function compressDataUrlToThumbnail(
@@ -65,7 +86,7 @@ async function extractOpenGraphFromTab(
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
-      func: () => {
+      func: async () => {
         const getMeta = (selector: string) =>
           document.querySelector<HTMLMetaElement>(selector)?.content?.trim() || '';
         const rawImage =
@@ -81,8 +102,58 @@ async function extractOpenGraphFromTab(
             absoluteImage = undefined;
           }
         }
+
+        let resolvedCover = absoluteImage;
+        if (absoluteImage && /^https?:\/\//i.test(absoluteImage)) {
+          const controller = new AbortController();
+          const timer = window.setTimeout(() => controller.abort(), 1800);
+          try {
+            const resp = await fetch(absoluteImage, {
+              credentials: 'same-origin',
+              signal: controller.signal,
+            });
+            if (resp.ok) {
+              const blob = await resp.blob();
+              if (blob.type.startsWith('image/') && blob.size > 200) {
+                const bitmap = await createImageBitmap(blob);
+                const maxW = 520;
+                const maxH = 325;
+                const ratio = Math.max(maxW / bitmap.width, maxH / bitmap.height);
+                const w = Math.max(1, Math.round(Math.min(maxW, bitmap.width * ratio)));
+                const h = Math.max(1, Math.round(Math.min(maxH, bitmap.height * ratio)));
+
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  const targetAspect = w / h;
+                  let sw = bitmap.width;
+                  let sh = Math.round(bitmap.width / targetAspect);
+                  if (sh > bitmap.height) {
+                    sh = bitmap.height;
+                    sw = Math.round(bitmap.height * targetAspect);
+                  }
+                  const sx = Math.max(0, Math.round((bitmap.width - sw) / 2));
+                  const sy = Math.max(0, Math.round((bitmap.height - sh) / 3));
+                  ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, w, h);
+                  const webp = canvas.toDataURL('image/webp', 0.8);
+                  if (webp.startsWith('data:image/webp;base64,')) {
+                    resolvedCover = webp;
+                  }
+                }
+                bitmap.close();
+              }
+            }
+          } catch {
+            // mantem absoluteImage como fallback quando cross-origin bloquear canvas
+          } finally {
+            window.clearTimeout(timer);
+          }
+        }
+
         return {
-          ogImage: absoluteImage,
+          ogImage: resolvedCover,
           pageTitle: document.title?.trim() || undefined,
         };
       },
@@ -147,7 +218,7 @@ export async function inspectActiveBrowserTab(): Promise<BrowserTabSnapshot | nu
       url: safeUrl,
       domain: extractDomain(safeUrl),
       faviconUrl: activeTab.favIconUrl || undefined,
-      ogImageUrl: ogData.ogImage ? sanitizeHttpUrl(ogData.ogImage) ?? undefined : undefined,
+      ogImageUrl: sanitizeCoverSource(ogData.ogImage),
       capturedDataUrl,
       detectedProgress: detectProgressFromTab(finalTitle, safeUrl),
     };

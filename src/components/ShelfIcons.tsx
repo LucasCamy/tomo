@@ -73,6 +73,32 @@ export const STATUS_OPTIONS: Array<{
   { value: 'completed', label: 'Concluido', tone: 'default' },
 ];
 
+export function getNextReadingStatus(current: ReadingStatus): ReadingStatus {
+  switch (current) {
+    case 'reading':
+      return 'up_to_date';
+    case 'up_to_date':
+      return 'paused';
+    case 'paused':
+      return 'completed';
+    case 'completed':
+      return 'reading';
+  }
+}
+
+export function getReadingStatusLabel(status: ReadingStatus): string {
+  switch (status) {
+    case 'reading':
+      return 'Lendo';
+    case 'up_to_date':
+      return 'Em dia';
+    case 'paused':
+      return 'Pausado';
+    case 'completed':
+      return 'Concluido';
+  }
+}
+
 export function StatusIcon({
   status,
   size = 15,
@@ -92,35 +118,45 @@ export function StatusIcon({
   }
 }
 
-export function StatusBadge({ status }: { status: ReadingStatus }) {
-  switch (status) {
-    case 'reading':
-      return (
-        <span className="status-badge status-badge--reading">
-          <BookOpen size={13} aria-hidden="true" />
-          <span>Lendo</span>
-        </span>
-      );
-    case 'up_to_date':
-      return (
-        <span className="status-badge status-badge--up_to_date">
-          <CircleCheck size={13} aria-hidden="true" />
-          <span>Em dia</span>
-        </span>
-      );
-    case 'paused':
-      return (
-        <span className="status-badge status-badge--paused">
-          <CircleDashed size={13} aria-hidden="true" />
-          <span>Pausado</span>
-        </span>
-      );
-    case 'completed':
-      return (
-        <span className="status-badge status-badge--completed">
-          <CheckSquare size={13} aria-hidden="true" />
-          <span>Concluido</span>
-        </span>
-      );
+export function StatusBadge({
+  status,
+  itemTitle,
+  onClick,
+}: {
+  status: ReadingStatus;
+  itemTitle?: string;
+  onClick?: () => void;
+}) {
+  const label = getReadingStatusLabel(status);
+  const content = (
+    <>
+      <StatusIcon status={status} size={13} />
+      <span>{label}</span>
+    </>
+  );
+
+  if (onClick) {
+    const nextLabel = getReadingStatusLabel(getNextReadingStatus(status));
+    return (
+      <button
+        type="button"
+        className={`status-badge status-badge--${status} is-interactive`}
+        onClick={onClick}
+        aria-label={
+          itemTitle
+            ? `Status de ${itemTitle}: ${label}. Clique para mudar para ${nextLabel}`
+            : `Status: ${label}. Clique para mudar para ${nextLabel}`
+        }
+        title={`Mudar status para "${nextLabel}" (1 clique)`}
+      >
+        {content}
+      </button>
+    );
   }
+
+  return (
+    <span className={`status-badge status-badge--${status}`}>
+      {content}
+    </span>
+  );
 }

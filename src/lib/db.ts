@@ -11,7 +11,13 @@ import {
   parseAndValidateBackupJson,
   reconcileBackupImport,
 } from './backup';
-import { extractDomain, sanitizeCoverSource, sanitizeHttpUrl } from './progress';
+import {
+  extractDomain,
+  normalizeDomainHost,
+  rewriteUrlDomain,
+  sanitizeCoverSource,
+  sanitizeHttpUrl,
+} from './progress';
 
 const DB_NAME = 'tomo_shelf_db';
 const DB_VERSION = 1;
@@ -478,6 +484,100 @@ export async function deleteSavedLink(itemId: string): Promise<void> {
     tx.onerror = () => reject(tx.error);
   });
   broadcastShelfUpdate();
+}
+
+export async function migrateSavedLinksDomain(
+  oldDomainInput: string,
+  newDomainInput: string
+): Promise<{
+  updatedCount: number;
+  oldDomain: string;
+  newDomain: string;
+}> {
+  const parsedOld = normalizeDomainHost(oldDomainInput);
+  const parsedNew = normalizeDomainHost(newDomainInput);
+
+  if (!parsedOld) {
+    throw new Error('Selecione ou informe um dominio antigo valido (ex.: siteantigo.com).');
+  }
+  if (!parsedNew) {
+    throw new Error('Informe o novo dominio valido (ex.: sitenovo.org).');
+  }
+  if (parsedOld.host === parsedNew.host) {
+    throw new Error('O novo dominio precisa ser diferente do dominio atual.');
+  }
+
+  const db = await openShelfDb();
+  const { items } = await loadShelfState();
+  const now = new Date().toISOString();
+
+  const updatedItems: SavedLinkItem[] = [];
+  for (const item of items) {
+    if (extractDomain(item.url).toLowerCase() !== parsedOld.host) continue;
+
+    const rewrittenUrl = rewriteUrlDomain(
+      item.url,
+      parsedNew.host,
+      parsedNew.protocol
+    );
+    if (!rewrittenUrl) continue;
+
+    let nextCover = item.coverImage;
+    if (
+      nextCover &&
+      !nextCover.startsWith('data:image/') &&
+      extractDomain(nextCover).toLowerCase() === parsedOld.host
+    ) {
+      nextCover =
+        rewriteUrlDomain(nextCover, parsedNew.host, parsedNew.protocol) ??
+        nextCover;
+    }
+
+    let nextFavicon = item.faviconUrl;
+    if (
+      nextFavicon &&
+      !nextFavicon.startsWith('data:image/') &&
+      extractDomain(nextFavicon).toLowerCase() === parsedOld.host
+    ) {
+      nextFavicon =
+        rewriteUrlDomain(nextFavicon, parsedNew.host, parsedNew.protocol) ??
+        nextFavicon;
+    }
+
+    updatedItems.push({
+      ...item,
+      url: rewrittenUrl,
+      domain: extractDomain(rewrittenUrl),
+      coverImage: nextCover,
+      faviconUrl: nextFavicon,
+      updatedAt: now,
+    });
+  }
+
+  if (updatedItems.length === 0) {
+    return {
+      updatedCount: 0,
+      oldDomain: parsedOld.host,
+      newDomain: parsedNew.host,
+    };
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_ITEMS, 'readwrite');
+    const store = tx.objectStore(STORE_ITEMS);
+    for (const updated of updatedItems) {
+      store.put(updated);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+
+  broadcastShelfUpdate();
+  return {
+    updatedCount: updatedItems.length,
+    oldDomain: parsedOld.host,
+    newDomain: parsedNew.host,
+  };
 }
 
 export async function exportShelfBackupJson(): Promise<{

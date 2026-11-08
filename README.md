@@ -26,7 +26,7 @@ Funciona no **Google Chrome**, **Brave**, **Microsoft Edge**, **Opera** e **Viva
 
 ### 1. Baixe e extraia o pacote pronto
 1. Acesse a pagina de [**Releases do Tomo**](https://github.com/LucasCamy/tomo/releases/latest).
-2. Em **Assets** (no fim da nota da versao), clique em **`tomo-chrome-v1.2.0.zip`** (ou a versao mais recente) para baixar.
+2. Em **Assets** (no fim da nota da versao), clique em **`tomo-chrome-v1.3.0.zip`** (ou a versao mais recente) para baixar.
 3. Clique com o botao direito no arquivo `.zip` baixado e escolha **Extrair Tudo...** (*Extract All*).
 4. Salve a pasta extraida em um local fixo do seu PC (por exemplo: `Documentos/Tomo`).
    > **Importante:** nao apague nem mova essa pasta depois de instalar, pois o navegador carrega a extensao diretamente dela.
@@ -62,15 +62,25 @@ Voce pode conferir e aplicar atualizacoes direto pela propria Estante do Tomo:
 ## Principais Recursos
 
 - **Salvamento e reconhecimento inteligente:**
-  - Captura automatica da capa do site (`og:image`) ou miniatura visual comprimida da aba (WebP local).
+  - **Capas offline resilientes (WebP):** a imagem `og:image` do site e capturada e comprimida localmente dentro da propria origem da aba ativa (evitando bloqueios de hotlink do Cloudflare ou links quebrados se o leitor mudar de servidor).
+  - **Envio do computador e colar capa:** botao para enviar imagem de capa do PC e suporte a colar (`Ctrl+V`) direto no formulario.
+  - **Limpeza avancada de titulos:** remove automaticamente sufixos de leitores e scans (`- Scan`, marcas de site e tracos soltos), mantendo o nome limpo da obra.
   - Detecta automaticamente o capitulo ou episodio pelo titulo/URL (`Cap. 142`, `Cap. 375.5`, `Ep. 08`).
   - Se voce ja salvou uma obra no `Cap. 142` e abrir o popup lendo o `Cap. 148`, o Tomo reconhece a obra e oferece **Atualizar parada** em 1 clique sem duplicar card.
   - Opcao **Salvar e fechar** para guardar onde parou e ja fechar a aba do navegador na hora.
+- **Badge inteligente na barra e Menu de contexto (Botao direito):**
+  - O icone do Tomo na barra do navegador mostra o numero do capitulo salvo para a aba ativa e acende em tom de destaque quando a pagina aberta estiver em um capitulo mais avancado do que o salvo.
+  - Clique com o botao direito em qualquer pagina, link ou imagem:
+    - *Salvar ou atualizar esta pagina no Tomo*
+    - *Salvar link no Tomo em... (com submenu sincronizado com suas abas)*
+    - *Usar esta imagem como capa no Tomo*
 - **Estante visual organizada por abas:**
   - Crie, renomeie, escolha icones e reordene quantas abas/colecoes quiser (`Mangas`, `Leituras & Estudos`, `Para ver depois`, etc.).
-  - Botao `+1` direto na capa do card para somar capitulos rapidamente.
+  - **Controles no card:** alterne status de leitura (`Lendo -> Em dia -> Pausado -> Concluido`) em 1 clique sobre o emblema do card e use os botoes `-1` e `+1` na pilula de capitulo.
   - **Guardar abas abertas:** importa varias abas abertas da janela do Chrome de uma so vez e fecha todas automaticamente.
-  - Busca instantanea, filtros por status (`Lendo`, `Em dia`, `Pausado`, `Concluido`), ordenacao, modo Galeria ou Compacto e alternancia entre **Tema Escuro** e **Tema Claro**.
+  - Busca instantanea, filtros por status, ordenacao, modo Galeria ou Compacto e alternancia entre **Tema Escuro** e **Tema Claro**.
+- **Troca de dominio em massa ("Trocar Dominio"):**
+  - Quando um site de manga ou blog mudar de dominio (por exemplo, de `site.com` para `site.org`), atualize todos os links salvos daquele site de uma so vez pela janela de atualizacao, preservando capitulos, notas, capas e abas.
 - **Backup 100% local e sincronizacao automatica (`.json`):**
   - Vincule um arquivo `tomo-backup.json` fixo no seu computador (por exemplo em `Documentos`, OneDrive ou Google Drive) para que toda mudanca na Estante atualize esse arquivo sozinha, sem gerar copias repetidas em `Downloads`.
   - Exporte ou importe backups a qualquer momento escolhendo entre **Mesclar** ou **Substituir**.

@@ -26,7 +26,7 @@
 - `npm run dev`: servidor Vite local para desenvolvimento (**encontrado em `package.json`**).
 - `npm run build`: checagem TypeScript (`tsc -b`) + build de producao em `dist/` para carregar no Chrome (**executado e aprovado**).
 - `npm run pack`: executa o build de producao e gera `release/tomo-chrome-v*.zip` pronto para distribuicao (**executado e aprovado**).
-- `npm test`: testes unitarios com Vitest (**executado e aprovado: 11/11 testes**).
+- `npm test`: testes unitarios com Vitest (**executado e aprovado: 14/14 testes**).
 
 ## Convencoes e validacao de UI
 

@@ -16,11 +16,19 @@ import {
 } from '../updater';
 import {
   detectProgressFromTab,
+  extractNumericProgress,
   findMatchingSavedItem,
+  formatBadgeProgress,
+  normalizeDomainHost,
+  rewriteUrlDomain,
   sanitizeHttpUrl,
   stepProgressLabel,
   suggestCleanTitle,
 } from '../progress';
+import {
+  getNextReadingStatus,
+  getReadingStatusLabel,
+} from '../../components/ShelfIcons';
 import type { CollectionTab, SavedLinkItem } from '../../types/shelf';
 
 describe('progress & URL helpers', () => {
@@ -58,7 +66,63 @@ describe('progress & URL helpers', () => {
     expect(
       suggestCleanTitle('O Imperador Marcial Dragão Carmesim — Capítulo 1')
     ).toBe('O Imperador Marcial Dragão Carmesim');
+    expect(
+      suggestCleanTitle('O Imperador Marcial Dragão Carmesim —')
+    ).toBe('O Imperador Marcial Dragão Carmesim');
+    expect(
+      suggestCleanTitle('O Imperador Marcial Dragão Carmesim — BlitzToons')
+    ).toBe('O Imperador Marcial Dragão Carmesim');
+    expect(suggestCleanTitle('Solo Leveling - MangaScan')).toBe('Solo Leveling');
+    expect(suggestCleanTitle('Spider-Man: Blue')).toBe('Spider-Man: Blue');
     expect(suggestCleanTitle('Documentacao Vite')).toBe('Documentacao Vite');
+  });
+
+  it('extracts numeric progress and formats toolbar badge cleanly', () => {
+    expect(extractNumericProgress('Cap. 142')).toBe(142);
+    expect(extractNumericProgress('Cap. 142.5')).toBe(142.5);
+    expect(extractNumericProgress('Ep. 08')).toBe(8);
+    expect(extractNumericProgress('Livro')).toBeNull();
+
+    expect(formatBadgeProgress('Cap. 142')).toBe('142');
+    expect(formatBadgeProgress('Cap. 142.5')).toBe('142.5');
+    expect(formatBadgeProgress('Ep. 8')).toBe('8');
+    expect(formatBadgeProgress('Pag. 35')).toBe('35');
+    expect(formatBadgeProgress('Vol. 2')).toBe('2');
+    expect(formatBadgeProgress('')).toBe('');
+    expect(formatBadgeProgress('Sem Capitulo')).toBe('OK');
+  });
+
+  it('normalizes domain hosts and rewrites URLs cleanly during bulk migration', () => {
+    expect(normalizeDomainHost('https://mangadex.org/title/123')?.host).toBe('mangadex.org');
+    expect(normalizeDomainHost('HTTPS://WWW.BlitzToons.com/ler')?.host).toBe('blitztoons.com');
+    expect(normalizeDomainHost('blitztoons.com:8080')?.host).toBe('blitztoons.com');
+    expect(normalizeDomainHost('javascript:alert(1)')).toBeNull();
+
+    expect(
+      rewriteUrlDomain(
+        'https://blitztoons.com/manga/cap-10?read=1#p1',
+        'blitztoons.org'
+      )
+    ).toBe('https://blitztoons.org/manga/cap-10?read=1#p1');
+
+    expect(rewriteUrlDomain('https://mangadex.org/title/abc', 'mangadex.dev')).toBe(
+      'https://mangadex.dev/title/abc'
+    );
+
+    expect(rewriteUrlDomain('javascript:alert(1)', 'a.com')).toBeNull();
+    expect(rewriteUrlDomain('chrome://extensions', 'a.com')).toBeNull();
+  });
+
+  it('cycles reading statuses in sequence and returns clear localized labels', () => {
+    expect(getNextReadingStatus('reading')).toBe('up_to_date');
+    expect(getNextReadingStatus('up_to_date')).toBe('paused');
+    expect(getNextReadingStatus('paused')).toBe('completed');
+    expect(getNextReadingStatus('completed')).toBe('reading');
+
+    expect(getReadingStatusLabel('reading')).toBe('Lendo');
+    expect(getReadingStatusLabel('up_to_date')).toBe('Em dia');
+    expect(getReadingStatusLabel('paused')).toBe('Pausado');
+    expect(getReadingStatusLabel('completed')).toBe('Concluido');
   });
 
   it('increments and decrements chapter labels including decimals and bounds', () => {

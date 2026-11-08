@@ -98,20 +98,94 @@ export function suggestCleanTitle(rawTitle: string): string {
   if (!trimmed) return '';
 
   let cleaned = trimmed
-    .replace(/\s*[|·•]\s*[^|·•]{2,38}$/u, '')
+    .replace(/\s*[|·•]\s*[^|·•]{2,42}$/u, '')
     .replace(
-      /\s*(?:[-–—:]\s*)?(?:ler\s+)?(?:cap[ií]tulo|cap\.?|chapter|ch\.?|epis[oó]dio|ep\.?)\s*#?\s*\d+(?:[.,]\d+)?.*$/iu,
+      /\s*(?:[-–—:]\s*)?(?:ler\s+)?(?:cap[ií]tulo|cap\.?|chapter|ch\.?|epis[oó]dio|ep\.?|temporada|season)\s*#?\s*\d+(?:[.,]\d+)?.*$/iu,
+      ''
+    )
+    .replace(/\s+[—–]\s+[^—–|-]{2,30}$/u, '')
+    .replace(
+      /\s+-\s+[^-]{0,24}(?:[a-z0-9_-]*(?:scans?|scantrad|toons?|mang[aá]s?|manhwas?|manhuas?|webtoons?|comics?|leitor|online|oficial|pt-br|reader))\b[^-]*$/iu,
       ''
     )
     .replace(/^(?:ler|assistir)\s+/iu, '')
     .replace(/\s+(?:online|pt-br|em\s+portugu[eê]s|scan|mang[aá]s?)$/iu, '')
-    .replace(/\s*[-–—:|·•]+\s*$/u, '')
+    .replace(/^[\s\-–—:|·•]+|[\s\-–—:|·•]+$/gu, '')
     .trim();
 
   if (cleaned.length < 2) {
-    cleaned = trimmed;
+    cleaned = trimmed.replace(/^[\s\-–—:|·•]+|[\s\-–—:|·•]+$/gu, '').trim() || trimmed;
   }
   return cleaned;
+}
+
+export function extractNumericProgress(progressLabel?: string): number | null {
+  if (!progressLabel) return null;
+  const match = progressLabel.match(/(\d+(?:[.,]\d+)?)/);
+  if (!match?.[1]) return null;
+  const val = Number.parseFloat(match[1].replace(',', '.'));
+  return Number.isFinite(val) ? val : null;
+}
+
+export function formatBadgeProgress(progressLabel?: string): string {
+  if (!progressLabel?.trim()) return '';
+  const num = extractNumericProgress(progressLabel);
+  if (num === null) return 'OK';
+  const compact = String(num);
+  if (compact.length <= 5) return compact;
+  if (Number.isInteger(num)) {
+    return `${compact.slice(0, 3)}+`;
+  }
+  const floored = String(Math.floor(num));
+  return floored.length <= 4 ? floored : `${floored.slice(0, 3)}+`;
+}
+
+export function normalizeDomainHost(
+  rawInput: string
+): { host: string; protocol: 'http:' | 'https:' } | null {
+  const trimmed = rawInput.trim();
+  if (!trimmed) return null;
+
+  const explicitHttp = /^http:\/\//i.test(trimmed);
+  const candidate = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
+    if (!host || !host.includes('.')) return null;
+    return {
+      host,
+      protocol: explicitHttp ? 'http:' : 'https:',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function rewriteUrlDomain(
+  rawUrl: string,
+  targetHost: string,
+  targetProtocol: 'http:' | 'https:' = 'https:'
+): string | null {
+  const safe = sanitizeHttpUrl(rawUrl);
+  if (!safe) return null;
+  try {
+    const parsed = new URL(safe);
+    const hadWww = /^www\./i.test(parsed.hostname);
+    const cleanTarget = targetHost.replace(/^www\./i, '').toLowerCase();
+    parsed.hostname = hadWww && !cleanTarget.startsWith('www.')
+      ? cleanTarget
+      : cleanTarget;
+    parsed.protocol = targetProtocol;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
 
 export function stepProgressLabel(current: string | undefined, delta: number): string {

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+} from 'react';
 import {
   AlertCircle,
   ArrowDown,
@@ -11,8 +18,10 @@ import {
   ExternalLink,
   FolderInput,
   FolderPlus,
+  Globe,
   Grid2x2,
   HardDrive,
+  ImagePlus,
   Keyboard,
   Layers,
   Link2,
@@ -41,10 +50,13 @@ import {
   StatusIcon,
   TAB_ICON_OPTIONS,
   TabCollectionIcon,
+  getNextReadingStatus,
+  getReadingStatusLabel,
 } from '../components/ShelfIcons';
 import { parseAndValidateBackupJson } from '../lib/backup';
 import {
   closeBrowserTabs,
+  compressImageBlobToCoverDataUrl,
   listOpenBrowserTabs,
   openExternalLink,
 } from '../lib/chromeBridge';
@@ -57,6 +69,7 @@ import {
   exportShelfBackupJson,
   importShelfBackupJson,
   loadShelfState,
+  migrateSavedLinksDomain,
   reorderCollectionTab,
   subscribeShelfUpdates,
   updateCollectionTab,
@@ -65,6 +78,8 @@ import {
 import {
   detectProgressFromTab,
   findMatchingSavedItem,
+  normalizeDomainHost,
+  rewriteUrlDomain,
   sanitizeHttpUrl,
   stepProgressLabel,
   suggestCleanTitle,
@@ -104,6 +119,7 @@ import type {
 
 type SortOption = 'updated' | 'title' | 'created';
 type DensityMode = 'gallery' | 'compact';
+type SyncModalTab = 'backup' | 'domain' | 'version';
 
 const VIEW_DENSITY_KEY = 'tomo_view_density';
 
@@ -145,6 +161,8 @@ export function DashboardApp() {
   const [formNotes, setFormNotes] = useState('');
   const [formPinned, setFormPinned] = useState(false);
   const [formError, setFormError] = useState('');
+  const [coverUploading, setCoverUploading] = useState(false);
+  const coverFileInputRef = useRef<HTMLInputElement>(null);
 
   // Modal Atualizar Parada Rapida
   const [quickStopItem, setQuickStopItem] = useState<SavedLinkItem | null>(null);
@@ -191,9 +209,10 @@ export function DashboardApp() {
     []
   );
 
-  // Modal Sincronizacao Local (.json) e Atualizacao (GitHub Releases)
+  // Modal Sincronizacao Local (.json), Migracao de Dominio e Atualizacao (GitHub)
   const extVersion = useMemo(() => getCurrentExtensionVersion(), []);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncModalTab, setSyncModalTab] = useState<SyncModalTab>('backup');
   const [linkedBackup, setLinkedBackup] = useState<LinkedBackupStatus>(() => ({
     supported: isFileSyncSupported(),
     linked: false,
@@ -201,6 +220,13 @@ export function DashboardApp() {
   }));
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<{
+    tone: 'success' | 'warning' | 'error';
+    message: string;
+  } | null>(null);
+  const [domainOld, setDomainOld] = useState('');
+  const [domainNew, setDomainNew] = useState('');
+  const [domainBusy, setDomainBusy] = useState(false);
+  const [domainFeedback, setDomainFeedback] = useState<{
     tone: 'success' | 'warning' | 'error';
     message: string;
   } | null>(null);
@@ -298,12 +324,21 @@ export function DashboardApp() {
     setShortcutsModalOpen(true);
   }, []);
 
-  const openSyncModal = useCallback(async () => {
-    setSyncFeedback(null);
-    const status = await getLinkedBackupStatus();
-    setLinkedBackup(status);
-    setSyncModalOpen(true);
-  }, []);
+  const openSyncModal = useCallback(
+    async (initialTab?: SyncModalTab) => {
+      setSyncFeedback(null);
+      setDomainFeedback(null);
+      if (initialTab) {
+        setSyncModalTab(initialTab);
+      } else if (updateResult?.hasUpdate) {
+        setSyncModalTab('version');
+      }
+      const status = await getLinkedBackupStatus();
+      setLinkedBackup(status);
+      setSyncModalOpen(true);
+    },
+    [updateResult?.hasUpdate]
+  );
 
   const anyModalOpen =
     itemModalOpen ||
@@ -525,6 +560,96 @@ export function DashboardApp() {
     ];
   }, [tabs, editingTab]);
 
+  const savedDomainStats = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      const parsed = normalizeDomainHost(item.domain);
+      const host = parsed ? parsed.host : item.domain.toLowerCase();
+      if (!host) continue;
+      counts.set(host, (counts.get(host) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([domain, count]) => ({ domain, count }))
+      .sort((a, b) => b.count - a.count || a.domain.localeCompare(b.domain));
+  }, [items]);
+
+  const savedDomainOptions = useMemo<DropdownOption<string>[]>(
+    () =>
+      savedDomainStats.map((entry) => ({
+        value: entry.domain,
+        label: `${entry.domain} (${entry.count} ${
+          entry.count === 1 ? 'link' : 'links'
+        })`,
+        icon: <Globe size={15} />,
+      })),
+    [savedDomainStats]
+  );
+
+  useEffect(() => {
+    if (savedDomainStats.length === 0) {
+      if (domainOld) setDomainOld('');
+      return;
+    }
+    if (!domainOld || !savedDomainStats.some((s) => s.domain === domainOld)) {
+      setDomainOld(savedDomainStats[0].domain);
+    }
+  }, [savedDomainStats, domainOld]);
+
+  const domainMigrationPreview = useMemo(() => {
+    if (!domainOld) return null;
+    const matching = items.filter((it) => {
+      const parsed = normalizeDomainHost(it.domain);
+      const host = parsed ? parsed.host : it.domain.toLowerCase();
+      return host === domainOld;
+    });
+    if (matching.length === 0) return null;
+    const parsedNew = normalizeDomainHost(domainNew);
+    const sample = matching[0];
+    const sampleAfter =
+      parsedNew && parsedNew.host !== domainOld
+        ? rewriteUrlDomain(sample.url, parsedNew.host, parsedNew.protocol)
+        : null;
+    return {
+      count: matching.length,
+      sampleBefore: sample.url,
+      sampleAfter,
+      parsedNew,
+    };
+  }, [items, domainOld, domainNew]);
+
+  const handleCoverBlobSelected = async (blob: Blob | undefined | null) => {
+    if (!blob || !blob.type.startsWith('image/')) return;
+    setCoverUploading(true);
+    setFormError('');
+    try {
+      const webpDataUrl = await compressImageBlobToCoverDataUrl(blob);
+      if (!webpDataUrl) {
+        setFormError('Nao foi possivel processar a imagem selecionada.');
+        return;
+      }
+      setFormCover(webpDataUrl);
+    } catch {
+      setFormError('Falha ao comprimir a imagem de capa.');
+    } finally {
+      setCoverUploading(false);
+    }
+  };
+
+  const handleModalImagePaste = (event: ClipboardEvent<HTMLElement>) => {
+    const clipboardItems = event.clipboardData?.items;
+    if (!clipboardItems) return;
+    for (const clipItem of clipboardItems) {
+      if (clipItem.kind === 'file' && clipItem.type.startsWith('image/')) {
+        const file = clipItem.getAsFile();
+        if (file) {
+          event.preventDefault();
+          void handleCoverBlobSelected(file);
+          return;
+        }
+      }
+    }
+  };
+
   // Abertura de modais
   const openCreateItemModal = () => {
     const defaultTabId =
@@ -659,11 +784,21 @@ export function DashboardApp() {
     }
   };
 
-  // Passo rapido +1 direto no card
+  // Passo rapido -1 / +1 direto no card
   const handleStepCardProgress = async (item: SavedLinkItem, delta: number) => {
     const nextProgress = stepProgressLabel(item.progressLabel, delta);
     await updateSavedLink(item.id, { progressLabel: nextProgress });
     await refreshShelf();
+  };
+
+  // Alternar status em 1 clique direto no card
+  const handleCycleCardStatus = async (item: SavedLinkItem) => {
+    const nextStatus = getNextReadingStatus(item.status);
+    await updateSavedLink(item.id, { status: nextStatus });
+    await refreshShelf();
+    showBanner(
+      `Status de "${item.title}" alterado para ${getReadingStatusLabel(nextStatus)}.`
+    );
   };
 
   const handleTogglePin = async (item: SavedLinkItem) => {
@@ -971,6 +1106,39 @@ export function DashboardApp() {
     }
   };
 
+  const handleMigrateDomain = async () => {
+    setDomainBusy(true);
+    setDomainFeedback(null);
+    try {
+      const result = await migrateSavedLinksDomain(domainOld, domainNew);
+      await refreshShelf();
+      setDomainOld(result.newDomain);
+      setDomainNew('');
+      if (result.updatedCount === 0) {
+        setDomainFeedback({
+          tone: 'warning',
+          message: `Nenhum link do dominio "${result.oldDomain}" precisou ser alterado.`,
+        });
+      } else {
+        const msg = `${result.updatedCount} ${
+          result.updatedCount === 1 ? 'link migrado' : 'links migrados'
+        } de ${result.oldDomain} para ${result.newDomain}.`;
+        setDomainFeedback({ tone: 'success', message: msg });
+        showBanner(msg);
+      }
+    } catch (err) {
+      setDomainFeedback({
+        tone: 'error',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Nao foi possivel migrar o dominio.',
+      });
+    } finally {
+      setDomainBusy(false);
+    }
+  };
+
   const handleCheckUpdate = async () => {
     setUpdateChecking(true);
     setUpdateError('');
@@ -1021,9 +1189,9 @@ export function DashboardApp() {
           <button
             type="button"
             className="btn btn-secondary btn-icon"
-            onClick={openSyncModal}
-            aria-label="Sincronizar backup e verificar atualizacao"
-            title="Sincronizar backup e verificar versao"
+            onClick={() => openSyncModal()}
+            aria-label="Sincronizar backup, migrar dominio e verificar atualizacao"
+            title="Sincronizar backup, dominio e versao"
           >
             <RefreshCw size={18} aria-hidden="true" />
           </button>
@@ -1239,7 +1407,7 @@ export function DashboardApp() {
           <button
             type="button"
             className="btn btn-surface"
-            onClick={openSyncModal}
+            onClick={() => openSyncModal()}
           >
             <RefreshCw size={15} aria-hidden="true" />
             <span>Sincronizar e Atualizar</span>
@@ -1319,8 +1487,8 @@ export function DashboardApp() {
               <button
                 type="button"
                 className="btn btn-surface"
-                onClick={openSyncModal}
-                title="Sincronizar arquivo local .json e verificar nova versao no GitHub"
+                onClick={() => openSyncModal()}
+                title="Sincronizar arquivo local .json, trocar dominio em massa e verificar versao"
               >
                 <RefreshCw size={16} aria-hidden="true" />
                 <span>Atualizar</span>
@@ -1559,6 +1727,7 @@ export function DashboardApp() {
                   showTabBadge={activeTabId === 'ALL'}
                   onOpenLink={(it) => openExternalLink(it.url)}
                   onStepProgress={handleStepCardProgress}
+                  onCycleStatus={handleCycleCardStatus}
                   onTogglePin={handleTogglePin}
                   onQuickUpdateStop={openQuickStopModal}
                   onEdit={openEditItemModal}
@@ -1630,7 +1799,10 @@ export function DashboardApp() {
           </>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div
+          style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+          onPaste={handleModalImagePaste}
+        >
           <div className="field-group">
             <label className="field-label" htmlFor="item-url">
               Endereco da pagina (URL)
@@ -1730,25 +1902,57 @@ export function DashboardApp() {
 
           <div className="field-group">
             <label className="field-label" htmlFor="item-cover">
-              Imagem de capa (opcional · URL https ou miniatura automatica)
+              Imagem de capa (URL https, arquivo do PC ou colar com Ctrl+V)
             </label>
-            <input
-              id="item-cover"
-              type="text"
-              className="text-input"
-              placeholder="https://site.com/capa.jpg"
-              value={formCover.startsWith('data:image/') ? '' : formCover}
-              onChange={(e) => setFormCover(e.target.value)}
-            />
-            {formCover.startsWith('data:image/') ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span className="field-hint">Miniatura local capturada da pagina ativa.</span>
+            <div className="cover-input-row">
+              <input
+                id="item-cover"
+                type="text"
+                className="text-input"
+                placeholder="https://site.com/capa.jpg ou cole uma imagem (Ctrl+V)"
+                value={formCover.startsWith('data:image/') ? '' : formCover}
+                onChange={(e) => setFormCover(e.target.value)}
+              />
+              <input
+                ref={coverFileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  void handleCoverBlobSelected(file);
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={coverUploading}
+                onClick={() => coverFileInputRef.current?.click()}
+                title="Escolher imagem do computador (convertida localmente para WebP)"
+              >
+                <ImagePlus size={15} aria-hidden="true" />
+                <span>{coverUploading ? 'Convertendo...' : 'Do PC'}</span>
+              </button>
+            </div>
+            {formCover ? (
+              <div className="cover-mini-preview-bar">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <div className="cover-mini-thumb">
+                    <img src={formCover} alt="Previa da capa" />
+                  </div>
+                  <span className="field-hint">
+                    {formCover.startsWith('data:image/')
+                      ? 'Capa salva offline nesta maquina (WebP).'
+                      : 'Capa externa via link HTTPS.'}
+                  </span>
+                </div>
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
                   onClick={() => setFormCover('')}
                 >
-                  Remover miniatura
+                  Remover
                 </button>
               </div>
             ) : null}
@@ -2452,10 +2656,10 @@ export function DashboardApp() {
         </div>
       </ModalDialog>
 
-      {/* MODAL 8: Sincronizacao Automatica Local (.json) e Atualizacao via GitHub */}
+      {/* MODAL 8: Sincronizacao Automatica Local (.json), Troca de Dominio e Atualizacao via GitHub */}
       <ModalDialog
         open={syncModalOpen}
-        title="Sincronizacao e Atualizacao"
+        title="Sincronizacao, Dominio e Atualizacao"
         onClose={() => setSyncModalOpen(false)}
         footer={
           <button
@@ -2468,11 +2672,55 @@ export function DashboardApp() {
         }
       >
         <div className="sync-modal-stack">
+          <div
+            className="sync-tabs-bar"
+            role="tablist"
+            aria-label="Opcoes de sincronizacao, dominio e atualizacao"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={syncModalTab === 'backup'}
+              className={`sync-tab-btn ${syncModalTab === 'backup' ? 'is-active' : ''}`}
+              onClick={() => setSyncModalTab('backup')}
+            >
+              <HardDrive size={15} aria-hidden="true" />
+              <span>Backup Auto</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={syncModalTab === 'domain'}
+              className={`sync-tab-btn ${syncModalTab === 'domain' ? 'is-active' : ''}`}
+              onClick={() => setSyncModalTab('domain')}
+            >
+              <Globe size={15} aria-hidden="true" />
+              <span>Trocar Dominio</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={syncModalTab === 'version'}
+              className={`sync-tab-btn ${syncModalTab === 'version' ? 'is-active' : ''}`}
+              onClick={() => setSyncModalTab('version')}
+            >
+              <Sparkles size={15} aria-hidden="true" />
+              <span>Versao</span>
+              {updateResult?.hasUpdate ? (
+                <span
+                  className="btn-status-dot btn-status-dot--action"
+                  aria-hidden="true"
+                />
+              ) : null}
+            </button>
+          </div>
+
           {/* Secao 1: Backup Automatico em Arquivo Fixo no PC */}
-          <section className="sync-section" aria-label="Backup automatico no computador">
-            <h3 className="shortcuts-section-title">
-              1. Backup automatico no computador (.json fixo)
-            </h3>
+          {syncModalTab === 'backup' ? (
+            <section className="sync-section" aria-label="Backup automatico no computador">
+              <h3 className="shortcuts-section-title">
+                Backup automatico no computador (.json fixo)
+              </h3>
             <p className="field-hint">
               Vincule um arquivo <code>.json</code> em uma pasta fixa (como{' '}
               <code>Documentos</code>, OneDrive ou Google Drive). Enquanto ativo, toda
@@ -2624,11 +2872,131 @@ export function DashboardApp() {
               ) : null}
             </div>
           </section>
+        ) : null}
 
-          {/* Secao 2: Verificacao de Nova Versao no GitHub + Recarregar Extensao */}
+        {/* Secao 2: Trocar Dominio em Massa */}
+        {syncModalTab === 'domain' ? (
+          <section
+            className="sync-section"
+            aria-label="Migracao em lote de dominio"
+          >
+            <h3 className="shortcuts-section-title">
+              Trocar dominio de sites em massa
+            </h3>
+            <p className="field-hint">
+              Quando um site ou scan mudar de dominio (ex.: de{' '}
+              <code>mangadex.org</code> para <code>mangadex.dev</code>),
+              atualize todos os seus links salvos de uma so vez, mantendo
+              capitulos, notas, capas e abas intactos.
+            </p>
+
+            <div className="sync-status-card">
+              {savedDomainStats.length === 0 ? (
+                <p className="field-hint">
+                  Voce ainda nao possui links salvos na estante.
+                </p>
+              ) : (
+                <>
+                  <div className="field-group">
+                    <label className="field-label" htmlFor="domain-old-select">
+                      Dominio atual dos links salvos
+                    </label>
+                    <SelectDropdown
+                      id="domain-old-select"
+                      ariaLabel="Dominio atual dos links salvos"
+                      value={domainOld}
+                      options={savedDomainOptions}
+                      onChange={setDomainOld}
+                    />
+                  </div>
+
+                  <div className="field-group">
+                    <label className="field-label" htmlFor="domain-new-input">
+                      Novo dominio ou endereco
+                    </label>
+                    <input
+                      id="domain-new-input"
+                      type="text"
+                      className="text-input font-data"
+                      placeholder="Ex.: novo-site.org"
+                      value={domainNew}
+                      onChange={(e) => setDomainNew(e.target.value)}
+                    />
+                  </div>
+
+                  {domainMigrationPreview ? (
+                    <div className="domain-preview-box">
+                      <strong style={{ fontSize: 13 }}>
+                        {domainMigrationPreview.count}{' '}
+                        {domainMigrationPreview.count === 1
+                          ? 'link sera atualizado'
+                          : 'links serao atualizados'}
+                      </strong>
+                      <div className="domain-preview-url">
+                        Antes: {domainMigrationPreview.sampleBefore}
+                      </div>
+                      {domainMigrationPreview.sampleAfter ? (
+                        <div className="domain-preview-url domain-preview-url--after">
+                          Depois: {domainMigrationPreview.sampleAfter}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="sync-actions-wrap">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={
+                        domainBusy ||
+                        !domainOld ||
+                        !domainNew.trim() ||
+                        normalizeDomainHost(domainOld)?.host ===
+                          normalizeDomainHost(domainNew)?.host
+                      }
+                      onClick={handleMigrateDomain}
+                    >
+                      <RefreshCw
+                        size={14}
+                        className={domainBusy ? 'is-spinning' : undefined}
+                        aria-hidden="true"
+                      />
+                      <span>Atualizar links deste dominio</span>
+                    </button>
+                  </div>
+
+                  {domainFeedback ? (
+                    <div
+                      className={
+                        domainFeedback.tone === 'error'
+                          ? 'field-error'
+                          : `sync-alert sync-alert--${domainFeedback.tone}`
+                      }
+                      role={
+                        domainFeedback.tone === 'error' ? 'alert' : 'status'
+                      }
+                    >
+                      <div className="sync-alert-head">
+                        {domainFeedback.tone === 'success' ? (
+                          <CircleCheck size={16} aria-hidden="true" />
+                        ) : (
+                          <AlertCircle size={16} aria-hidden="true" />
+                        )}
+                        <span>{domainFeedback.message}</span>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </section>
+        ) : null}
+
+        {/* Secao 3: Verificacao de Nova Versao no GitHub + Recarregar Extensao */}
+        {syncModalTab === 'version' ? (
           <section className="sync-section" aria-label="Atualizacao da extensao">
             <h3 className="shortcuts-section-title">
-              2. Versao da extensao (GitHub Releases)
+              Versao da extensao (GitHub Releases)
             </h3>
             <p className="field-hint">
               Consulta publica sob demanda ao repositorio oficial para conferir se saiu
@@ -2761,6 +3129,7 @@ export function DashboardApp() {
               </div>
             </div>
           </section>
+        ) : null}
         </div>
       </ModalDialog>
     </div>
