@@ -109,10 +109,21 @@ async function extractPageMetaInWorker(
       func: async () => {
         const readMeta = (sel: string) =>
           document.querySelector<HTMLMetaElement>(sel)?.content?.trim() || '';
+        const readLink = (sel: string) =>
+          document.querySelector<HTMLLinkElement>(sel)?.href?.trim() || '';
+
         const rawImg =
           readMeta('meta[property="og:image"]') ||
+          readMeta('meta[property="og:image:secure_url"]') ||
+          readMeta('meta[property="og:image:url"]') ||
           readMeta('meta[name="twitter:image"]') ||
-          readMeta('meta[property="og:image:url"]');
+          readMeta('meta[name="twitter:image:src"]') ||
+          readMeta('meta[name="thumbnail"]') ||
+          readLink('link[rel="image_src"]') ||
+          document.querySelector<HTMLImageElement>('[itemprop="image"]')?.src?.trim() ||
+          document.querySelector<HTMLImageElement>(
+            'img[class*="cover" i], img[class*="poster" i], img[id*="cover" i], img[alt*="capa" i], img[alt*="cover" i]'
+          )?.src?.trim();
 
         let resolvedImg: string | undefined;
         if (rawImg) {
@@ -124,49 +135,88 @@ async function extractPageMetaInWorker(
         }
 
         if (resolvedImg && /^https?:\/\//i.test(resolvedImg)) {
-          const controller = new AbortController();
-          const timer = window.setTimeout(() => controller.abort(), 1800);
+          // 1. Tenta desenhar direto da imagem existente no DOM no canvas (super rapido, sem refetch)
           try {
-            const resp = await fetch(resolvedImg, {
-              credentials: 'same-origin',
-              signal: controller.signal,
-            });
-            if (resp.ok) {
-              const blob = await resp.blob();
-              if (blob.type.startsWith('image/') && blob.size > 200) {
-                const bitmap = await createImageBitmap(blob);
-                const maxW = 520;
-                const maxH = 325;
-                const ratio = Math.max(maxW / bitmap.width, maxH / bitmap.height);
-                const w = Math.max(1, Math.round(Math.min(maxW, bitmap.width * ratio)));
-                const h = Math.max(1, Math.round(Math.min(maxH, bitmap.height * ratio)));
-                const canvas = document.createElement('canvas');
-                canvas.width = w;
-                canvas.height = h;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  const targetAspect = w / h;
-                  let sw = bitmap.width;
-                  let sh = Math.round(bitmap.width / targetAspect);
-                  if (sh > bitmap.height) {
-                    sh = bitmap.height;
-                    sw = Math.round(bitmap.height * targetAspect);
-                  }
-                  const sx = Math.max(0, Math.round((bitmap.width - sw) / 2));
-                  const sy = Math.max(0, Math.round((bitmap.height - sh) / 3));
-                  ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, w, h);
-                  const webp = canvas.toDataURL('image/webp', 0.8);
-                  if (webp.startsWith('data:image/webp;base64,')) {
-                    resolvedImg = webp;
-                  }
+            const domImg = Array.from(document.images).find(
+              (im) => im.src === resolvedImg && im.naturalWidth >= 60 && im.naturalHeight >= 60
+            );
+            if (domImg) {
+              const canvas = document.createElement('canvas');
+              const maxW = 520;
+              const maxH = 325;
+              const ratio = Math.max(maxW / domImg.naturalWidth, maxH / domImg.naturalHeight);
+              const w = Math.max(1, Math.round(Math.min(maxW, domImg.naturalWidth * ratio)));
+              const h = Math.max(1, Math.round(Math.min(maxH, domImg.naturalHeight * ratio)));
+              canvas.width = w;
+              canvas.height = h;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                const targetAspect = w / h;
+                let sw = domImg.naturalWidth;
+                let sh = Math.round(domImg.naturalWidth / targetAspect);
+                if (sh > domImg.naturalHeight) {
+                  sh = domImg.naturalHeight;
+                  sw = Math.round(domImg.naturalHeight * targetAspect);
                 }
-                bitmap.close();
+                const sx = Math.max(0, Math.round((domImg.naturalWidth - sw) / 2));
+                const sy = Math.max(0, Math.round((domImg.naturalHeight - sh) / 3));
+                ctx.drawImage(domImg, sx, sy, sw, sh, 0, 0, w, h);
+                const webp = canvas.toDataURL('image/webp', 0.8);
+                if (webp.startsWith('data:image/webp;base64,')) {
+                  resolvedImg = webp;
+                }
               }
             }
           } catch {
-            // mantem URL HTTP original caso o fetch cross-origin falhe
-          } finally {
-            window.clearTimeout(timer);
+            // Tainted canvas se a imagem nao permitiu crossOrigin direto
+          }
+
+          // 2. Se ainda nao e base64, tenta fetch com timeout omitindo credenciais
+          if (!resolvedImg?.startsWith('data:image/webp;base64,')) {
+            const controller = new AbortController();
+            const timer = window.setTimeout(() => controller.abort(), 1800);
+            try {
+              const resp = await fetch(resolvedImg, {
+                credentials: 'omit',
+                signal: controller.signal,
+              });
+              if (resp.ok) {
+                const blob = await resp.blob();
+                if (blob.type.startsWith('image/') && blob.size > 200) {
+                  const bitmap = await createImageBitmap(blob);
+                  const maxW = 520;
+                  const maxH = 325;
+                  const ratio = Math.max(maxW / bitmap.width, maxH / bitmap.height);
+                  const w = Math.max(1, Math.round(Math.min(maxW, bitmap.width * ratio)));
+                  const h = Math.max(1, Math.round(Math.min(maxH, bitmap.height * ratio)));
+                  const canvas = document.createElement('canvas');
+                  canvas.width = w;
+                  canvas.height = h;
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                    const targetAspect = w / h;
+                    let sw = bitmap.width;
+                    let sh = Math.round(bitmap.width / targetAspect);
+                    if (sh > bitmap.height) {
+                      sh = bitmap.height;
+                      sw = Math.round(bitmap.height * targetAspect);
+                    }
+                    const sx = Math.max(0, Math.round((bitmap.width - sw) / 2));
+                    const sy = Math.max(0, Math.round((bitmap.height - sh) / 3));
+                    ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, w, h);
+                    const webp = canvas.toDataURL('image/webp', 0.8);
+                    if (webp.startsWith('data:image/webp;base64,')) {
+                      resolvedImg = webp;
+                    }
+                  }
+                  bitmap.close();
+                }
+              }
+            } catch {
+              // Mantem URL HTTP original caso o fetch cross-origin falhe
+            } finally {
+              window.clearTimeout(timer);
+            }
           }
         }
 

@@ -84,6 +84,7 @@ export function LinkCard({
             alt={`Capa de ${item.title}`}
             className="card-cover-img"
             loading="lazy"
+            referrerPolicy="no-referrer"
             onError={() => setCoverBroken(true)}
           />
         ) : (
@@ -150,6 +151,7 @@ export function LinkCard({
                   src={item.faviconUrl}
                   alt=""
                   aria-hidden="true"
+                  referrerPolicy="no-referrer"
                   onError={() => setFaviconBroken(true)}
                 />
               ) : (

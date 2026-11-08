@@ -538,7 +538,11 @@ export function PopupApp() {
             <div className="popup-cover-preview">
               <div className="popup-cover-thumb">
                 {activeCoverPreview ? (
-                  <img src={activeCoverPreview} alt="Miniatura capturada da pagina" />
+                  <img
+                    src={activeCoverPreview}
+                    alt="Miniatura capturada da pagina"
+                    referrerPolicy="no-referrer"
+                  />
                 ) : (
                   <div
                     style={{

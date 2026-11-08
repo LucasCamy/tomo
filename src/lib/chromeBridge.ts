@@ -79,7 +79,7 @@ async function compressDataUrlToThumbnail(
   });
 }
 
-async function extractOpenGraphFromTab(
+export async function extractOpenGraphFromTab(
   tabId: number
 ): Promise<{ ogImage?: string; pageTitle?: string }> {
   if (!chrome.scripting?.executeScript) return {};
@@ -89,15 +89,26 @@ async function extractOpenGraphFromTab(
       func: async () => {
         const getMeta = (selector: string) =>
           document.querySelector<HTMLMetaElement>(selector)?.content?.trim() || '';
-        const rawImage =
+        const getLink = (selector: string) =>
+          document.querySelector<HTMLLinkElement>(selector)?.href?.trim() || '';
+
+        const candidateUrl =
           getMeta('meta[property="og:image"]') ||
+          getMeta('meta[property="og:image:secure_url"]') ||
+          getMeta('meta[property="og:image:url"]') ||
           getMeta('meta[name="twitter:image"]') ||
-          getMeta('meta[property="og:image:url"]');
+          getMeta('meta[name="twitter:image:src"]') ||
+          getMeta('meta[name="thumbnail"]') ||
+          getLink('link[rel="image_src"]') ||
+          document.querySelector<HTMLImageElement>('[itemprop="image"]')?.src?.trim() ||
+          document.querySelector<HTMLImageElement>(
+            'img[class*="cover" i], img[class*="poster" i], img[id*="cover" i], img[alt*="capa" i], img[alt*="cover" i]'
+          )?.src?.trim();
 
         let absoluteImage: string | undefined;
-        if (rawImage) {
+        if (candidateUrl) {
           try {
-            absoluteImage = new URL(rawImage, window.location.href).toString();
+            absoluteImage = new URL(candidateUrl, window.location.href).toString();
           } catch {
             absoluteImage = undefined;
           }
@@ -105,50 +116,89 @@ async function extractOpenGraphFromTab(
 
         let resolvedCover = absoluteImage;
         if (absoluteImage && /^https?:\/\//i.test(absoluteImage)) {
-          const controller = new AbortController();
-          const timer = window.setTimeout(() => controller.abort(), 1800);
+          // 1. Tenta desenhar direto da imagem existente no DOM no canvas (super rapido, sem refetch)
           try {
-            const resp = await fetch(absoluteImage, {
-              credentials: 'same-origin',
-              signal: controller.signal,
-            });
-            if (resp.ok) {
-              const blob = await resp.blob();
-              if (blob.type.startsWith('image/') && blob.size > 200) {
-                const bitmap = await createImageBitmap(blob);
-                const maxW = 520;
-                const maxH = 325;
-                const ratio = Math.max(maxW / bitmap.width, maxH / bitmap.height);
-                const w = Math.max(1, Math.round(Math.min(maxW, bitmap.width * ratio)));
-                const h = Math.max(1, Math.round(Math.min(maxH, bitmap.height * ratio)));
-
-                const canvas = document.createElement('canvas');
-                canvas.width = w;
-                canvas.height = h;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  const targetAspect = w / h;
-                  let sw = bitmap.width;
-                  let sh = Math.round(bitmap.width / targetAspect);
-                  if (sh > bitmap.height) {
-                    sh = bitmap.height;
-                    sw = Math.round(bitmap.height * targetAspect);
-                  }
-                  const sx = Math.max(0, Math.round((bitmap.width - sw) / 2));
-                  const sy = Math.max(0, Math.round((bitmap.height - sh) / 3));
-                  ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, w, h);
-                  const webp = canvas.toDataURL('image/webp', 0.8);
-                  if (webp.startsWith('data:image/webp;base64,')) {
-                    resolvedCover = webp;
-                  }
+            const domImg = Array.from(document.images).find(
+              (im) => im.src === absoluteImage && im.naturalWidth >= 60 && im.naturalHeight >= 60
+            );
+            if (domImg) {
+              const canvas = document.createElement('canvas');
+              const maxW = 520;
+              const maxH = 325;
+              const ratio = Math.max(maxW / domImg.naturalWidth, maxH / domImg.naturalHeight);
+              const w = Math.max(1, Math.round(Math.min(maxW, domImg.naturalWidth * ratio)));
+              const h = Math.max(1, Math.round(Math.min(maxH, domImg.naturalHeight * ratio)));
+              canvas.width = w;
+              canvas.height = h;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                const targetAspect = w / h;
+                let sw = domImg.naturalWidth;
+                let sh = Math.round(domImg.naturalWidth / targetAspect);
+                if (sh > domImg.naturalHeight) {
+                  sh = domImg.naturalHeight;
+                  sw = Math.round(domImg.naturalHeight * targetAspect);
                 }
-                bitmap.close();
+                const sx = Math.max(0, Math.round((domImg.naturalWidth - sw) / 2));
+                const sy = Math.max(0, Math.round((domImg.naturalHeight - sh) / 3));
+                ctx.drawImage(domImg, sx, sy, sw, sh, 0, 0, w, h);
+                const webp = canvas.toDataURL('image/webp', 0.8);
+                if (webp.startsWith('data:image/webp;base64,')) {
+                  resolvedCover = webp;
+                }
               }
             }
           } catch {
-            // mantem absoluteImage como fallback quando cross-origin bloquear canvas
-          } finally {
-            window.clearTimeout(timer);
+            // Tainted canvas se a imagem nao permitiu crossOrigin direto
+          }
+
+          // 2. Se ainda nao e base64, tenta fetch com timeout omitindo credenciais
+          if (!resolvedCover?.startsWith('data:image/webp;base64,')) {
+            const controller = new AbortController();
+            const timer = window.setTimeout(() => controller.abort(), 1800);
+            try {
+              const resp = await fetch(absoluteImage, {
+                credentials: 'omit',
+                signal: controller.signal,
+              });
+              if (resp.ok) {
+                const blob = await resp.blob();
+                if (blob.type.startsWith('image/') && blob.size > 200) {
+                  const bitmap = await createImageBitmap(blob);
+                  const maxW = 520;
+                  const maxH = 325;
+                  const ratio = Math.max(maxW / bitmap.width, maxH / bitmap.height);
+                  const w = Math.max(1, Math.round(Math.min(maxW, bitmap.width * ratio)));
+                  const h = Math.max(1, Math.round(Math.min(maxH, bitmap.height * ratio)));
+
+                  const canvas = document.createElement('canvas');
+                  canvas.width = w;
+                  canvas.height = h;
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                    const targetAspect = w / h;
+                    let sw = bitmap.width;
+                    let sh = Math.round(bitmap.width / targetAspect);
+                    if (sh > bitmap.height) {
+                      sh = bitmap.height;
+                      sw = Math.round(bitmap.height * targetAspect);
+                    }
+                    const sx = Math.max(0, Math.round((bitmap.width - sw) / 2));
+                    const sy = Math.max(0, Math.round((bitmap.height - sh) / 3));
+                    ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, w, h);
+                    const webp = canvas.toDataURL('image/webp', 0.8);
+                    if (webp.startsWith('data:image/webp;base64,')) {
+                      resolvedCover = webp;
+                    }
+                  }
+                  bitmap.close();
+                }
+              }
+            } catch {
+              // Mantem absoluteImage como fallback
+            } finally {
+              window.clearTimeout(timer);
+            }
           }
         }
 
@@ -162,6 +212,32 @@ async function extractOpenGraphFromTab(
   } catch {
     return {};
   }
+}
+
+export async function enrichOpenTabsWithCovers(
+  tabs: BrowserTabSnapshot[]
+): Promise<BrowserTabSnapshot[]> {
+  if (!isChromeExtensionEnv() || tabs.length === 0) return tabs;
+
+  const tasks = tabs.map(async (tabSnap) => {
+    if (tabSnap.ogImageUrl || tabSnap.capturedDataUrl || tabSnap.chromeTabId === undefined) {
+      return tabSnap;
+    }
+    try {
+      const meta = await extractOpenGraphFromTab(tabSnap.chromeTabId);
+      const safeCover = sanitizeCoverSource(meta.ogImage);
+      return {
+        ...tabSnap,
+        ogImageUrl: safeCover,
+        cleanTitle: meta.pageTitle ? suggestCleanTitle(meta.pageTitle) : tabSnap.cleanTitle,
+      };
+    } catch {
+      return tabSnap;
+    }
+  });
+
+  const settled = await Promise.allSettled(tasks);
+  return settled.map((res, i) => (res.status === 'fulfilled' ? res.value : tabs[i]));
 }
 
 export async function inspectActiveBrowserTab(): Promise<BrowserTabSnapshot | null> {

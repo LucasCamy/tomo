@@ -57,6 +57,8 @@ import { parseAndValidateBackupJson } from '../lib/backup';
 import {
   closeBrowserTabs,
   compressImageBlobToCoverDataUrl,
+  enrichOpenTabsWithCovers,
+  extractOpenGraphFromTab,
   listOpenBrowserTabs,
   openExternalLink,
 } from '../lib/chromeBridge';
@@ -80,6 +82,7 @@ import {
   findMatchingSavedItem,
   normalizeDomainHost,
   rewriteUrlDomain,
+  sanitizeCoverSource,
   sanitizeHttpUrl,
   stepProgressLabel,
   suggestCleanTitle,
@@ -190,6 +193,7 @@ export function DashboardApp() {
     new Set()
   );
   const [batchTargetTabId, setBatchTargetTabId] = useState('');
+  const [batchSaving, setBatchSaving] = useState(false);
 
   // Modal Importar Backup JSON
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -761,9 +765,21 @@ export function DashboardApp() {
     }
 
     try {
+      let recoveredCover: string | undefined;
+      const matchedTab = quickStopOpenTabs.find((bt) => bt.url === safeUrl);
+      if (!quickStopItem.coverImage && matchedTab?.chromeTabId !== undefined) {
+        try {
+          const meta = await extractOpenGraphFromTab(matchedTab.chromeTabId);
+          recoveredCover = sanitizeCoverSource(meta.ogImage);
+        } catch {
+          // fallback sem interrupcao
+        }
+      }
+
       await updateSavedLink(quickStopItem.id, {
         url: safeUrl,
         progressLabel: quickStopProgress,
+        coverImage: recoveredCover ?? quickStopItem.coverImage,
       });
 
       if (quickStopCloseAfter && quickStopTabToClose !== undefined) {
@@ -901,33 +917,56 @@ export function DashboardApp() {
     }
     setSelectedBrowserUrls(unsavedUrls);
     setBatchModalOpen(true);
+
+    // Enriquece em segundo plano com capas detectadas enquanto o usuario revisa
+    enrichOpenTabsWithCovers(list).then((enriched) => {
+      setOpenBrowserTabs((current) =>
+        current.map((curr) => {
+          const match = enriched.find((e) => e.url === curr.url);
+          return match?.ogImageUrl ? { ...curr, ogImageUrl: match.ogImageUrl } : curr;
+        })
+      );
+    });
   };
 
   const handleSaveSelectedBrowserTabs = async (closeAfter: boolean) => {
-    if (!batchTargetTabId || selectedBrowserUrls.size === 0) return;
+    if (!batchTargetTabId || selectedBrowserUrls.size === 0 || batchSaving) return;
 
-    const chosen = openBrowserTabs.filter((bt) => selectedBrowserUrls.has(bt.url));
-    const count = await createManySavedLinks(
-      chosen.map((bt) => ({
-        tabId: batchTargetTabId,
-        title: bt.cleanTitle || bt.title,
-        url: bt.url,
-        faviconUrl: bt.faviconUrl,
-        progressLabel: bt.detectedProgress || undefined,
-        status: 'reading',
-      }))
-    );
+    setBatchSaving(true);
+    try {
+      const chosen = openBrowserTabs.filter((bt) => selectedBrowserUrls.has(bt.url));
+      // Garante deteccao e compressao completa de capa para todas as abas selecionadas
+      const enrichedChosen = await enrichOpenTabsWithCovers(chosen);
 
-    if (closeAfter) {
-      const ids = chosen
-        .map((bt) => bt.chromeTabId)
-        .filter((id): id is number => id !== undefined);
-      await closeBrowserTabs(ids);
+      const count = await createManySavedLinks(
+        enrichedChosen.map((bt) => ({
+          tabId: batchTargetTabId,
+          title: bt.cleanTitle || bt.title,
+          url: bt.url,
+          faviconUrl: bt.faviconUrl,
+          coverImage: bt.ogImageUrl || bt.capturedDataUrl || undefined,
+          progressLabel: bt.detectedProgress || undefined,
+          status: 'reading',
+        }))
+      );
+
+      if (closeAfter) {
+        const ids = chosen
+          .map((bt) => bt.chromeTabId)
+          .filter((id): id is number => id !== undefined);
+        await closeBrowserTabs(ids);
+      }
+
+      setBatchModalOpen(false);
+      await refreshShelf();
+      showBanner(
+        `${count} ${count === 1 ? 'aba guardada' : 'abas guardadas'} na estante com capa.`
+      );
+    } catch {
+      showBanner('Nao foi possivel guardar as abas selecionadas.');
+    } finally {
+      setBatchSaving(false);
     }
-
-    setBatchModalOpen(false);
-    await refreshShelf();
-    showBanner(`${count} ${count === 1 ? 'aba guardada' : 'abas guardadas'} na estante.`);
   };
 
   // Exportar e Importar Backup JSON
@@ -1939,7 +1978,11 @@ export function DashboardApp() {
               <div className="cover-mini-preview-bar">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                   <div className="cover-mini-thumb">
-                    <img src={formCover} alt="Previa da capa" />
+                    <img
+                      src={formCover}
+                      alt="Previa da capa"
+                      referrerPolicy="no-referrer"
+                    />
                   </div>
                   <span className="field-hint">
                     {formCover.startsWith('data:image/')
@@ -2282,12 +2325,15 @@ export function DashboardApp() {
       <ModalDialog
         open={batchModalOpen}
         title="Guardar abas abertas do navegador"
-        onClose={() => setBatchModalOpen(false)}
+        onClose={() => {
+          if (!batchSaving) setBatchModalOpen(false);
+        }}
         footer={
           <>
             <button
               type="button"
               className="btn btn-secondary"
+              disabled={batchSaving}
               onClick={() => setBatchModalOpen(false)}
             >
               Cancelar
@@ -2295,18 +2341,18 @@ export function DashboardApp() {
             <button
               type="button"
               className="btn btn-secondary"
-              disabled={selectedBrowserUrls.size === 0}
+              disabled={selectedBrowserUrls.size === 0 || batchSaving}
               onClick={() => handleSaveSelectedBrowserTabs(false)}
             >
-              Salvar ({selectedBrowserUrls.size})
+              {batchSaving ? 'Guardando...' : `Salvar (${selectedBrowserUrls.size})`}
             </button>
             <button
               type="button"
               className="btn btn-primary"
-              disabled={selectedBrowserUrls.size === 0}
+              disabled={selectedBrowserUrls.size === 0 || batchSaving}
               onClick={() => handleSaveSelectedBrowserTabs(true)}
             >
-              Salvar e fechar abas ({selectedBrowserUrls.size})
+              {batchSaving ? 'Guardando...' : `Salvar e fechar abas (${selectedBrowserUrls.size})`}
             </button>
           </>
         }
@@ -2314,7 +2360,7 @@ export function DashboardApp() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <p className="field-hint">
             Selecione as abas abertas que deseja guardar na estante para liberar memoria no
-            Chrome sem perder onde parou.
+            Chrome sem perder onde parou. O Tomo extrai capas e capitulos automaticamente.
           </p>
 
           <div className="field-group">
@@ -2378,6 +2424,18 @@ export function DashboardApp() {
                         });
                       }}
                     />
+                    {bt.faviconUrl ? (
+                      <img
+                        src={bt.faviconUrl}
+                        alt=""
+                        aria-hidden="true"
+                        style={{ width: 16, height: 16, borderRadius: 3, flexShrink: 0 }}
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    ) : null}
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div
                         style={{
@@ -2393,6 +2451,7 @@ export function DashboardApp() {
                       <div className="font-data" style={{ fontSize: 11, color: 'var(--muted)' }}>
                         {bt.domain}
                         {bt.detectedProgress ? ` · ${bt.detectedProgress}` : ''}
+                        {bt.ogImageUrl ? ' · Capa detectada' : ''}
                         {alreadySaved ? ' · Ja salvo' : ''}
                       </div>
                     </div>

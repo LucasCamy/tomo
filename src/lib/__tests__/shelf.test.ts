@@ -21,10 +21,12 @@ import {
   formatBadgeProgress,
   normalizeDomainHost,
   rewriteUrlDomain,
+  sanitizeCoverSource,
   sanitizeHttpUrl,
   stepProgressLabel,
   suggestCleanTitle,
 } from '../progress';
+import { enrichOpenTabsWithCovers } from '../chromeBridge';
 import {
   getNextReadingStatus,
   getReadingStatusLabel,
@@ -395,6 +397,30 @@ describe('version comparison & GitHub release payload validation', () => {
       '1.2.0'
     );
     expect(upToDatePayload.hasUpdate).toBe(false);
+  });
+
+  it('sanitizes cover sources rejecting executable scripts and accepting webp data URLs', () => {
+    expect(sanitizeCoverSource('javascript:alert(1)')).toBeUndefined();
+    expect(sanitizeCoverSource('data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==')).toBeUndefined();
+    expect(sanitizeCoverSource('https://uploads.mangadex.org/covers/123.jpg')).toBe('https://uploads.mangadex.org/covers/123.jpg');
+    expect(sanitizeCoverSource('data:image/webp;base64,UklGRmYAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAD8D+JaQAA3AA/ua1AAA=')).toBe('data:image/webp;base64,UklGRmYAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAD8D+JaQAA3AA/ua1AAA=');
+    expect(sanitizeCoverSource('')).toBeUndefined();
+  });
+
+  it('safely enriches open tabs without crashing in non-extension mock environments', async () => {
+    const mockTabs = [
+      {
+        chromeTabId: 101,
+        title: 'One Piece - Cap. 1115',
+        cleanTitle: 'One Piece',
+        url: 'https://mangaplus.shueisha.co.jp/titles/100020/capitulo-1115',
+        domain: 'mangaplus.shueisha.co.jp',
+        detectedProgress: 'Cap. 1115',
+      },
+    ];
+    const enriched = await enrichOpenTabsWithCovers(mockTabs);
+    expect(enriched).toHaveLength(1);
+    expect(enriched[0].cleanTitle).toBe('One Piece');
   });
 });
 
