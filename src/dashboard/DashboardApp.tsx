@@ -8,6 +8,7 @@ import {
 } from 'react';
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowDown,
   ArrowDownAZ,
   ArrowUp,
@@ -32,6 +33,7 @@ import {
   RotateCw,
   Search,
   Settings2,
+  ShieldCheck,
   Sparkles,
   Sun,
   Trash2,
@@ -54,6 +56,11 @@ import {
   getReadingStatusLabel,
 } from '../components/ShelfIcons';
 import { parseAndValidateBackupJson } from '../lib/backup';
+import {
+  auditAndSyncShelfLinks,
+  type ShelfSyncProgress,
+  type ShelfSyncSummary,
+} from '../lib/shelfSync';
 import {
   closeBrowserTabs,
   compressImageBlobToCoverDataUrl,
@@ -122,7 +129,7 @@ import type {
 
 type SortOption = 'updated' | 'title' | 'created';
 type DensityMode = 'gallery' | 'compact';
-type SyncModalTab = 'backup' | 'domain' | 'version';
+type SyncModalTab = 'audit' | 'backup' | 'domain' | 'version';
 
 const VIEW_DENSITY_KEY = 'tomo_view_density';
 
@@ -239,6 +246,15 @@ export function DashboardApp() {
     null
   );
   const [updateError, setUpdateError] = useState('');
+  // Auditoria e Sincronizacao de Links da Estante
+  const [auditScope, setAuditScope] = useState<'current' | 'all'>('current');
+  const [auditCheckHealth, setAuditCheckHealth] = useState(true);
+  const [auditFillCovers, setAuditFillCovers] = useState(true);
+  const [auditForceCovers, setAuditForceCovers] = useState(false);
+  const [auditRunning, setAuditRunning] = useState(false);
+  const [auditProgress, setAuditProgress] = useState<ShelfSyncProgress | null>(null);
+  const [auditSummary, setAuditSummary] = useState<ShelfSyncSummary | null>(null);
+  const auditAbortControllerRef = useRef<AbortController | null>(null);
   const prevShelfFingerprintRef = useRef<string | null>(null);
 
   const refreshShelf = useCallback(async () => {
@@ -1199,6 +1215,61 @@ export function DashboardApp() {
     await triggerExtensionReload();
   };
 
+  const handleStartShelfSync = async () => {
+    if (auditRunning) return;
+
+    const targetItems =
+      auditScope === 'current' && activeTabId !== 'ALL'
+        ? items.filter((it) => it.tabId === activeTabId)
+        : items;
+
+    if (targetItems.length === 0) {
+      showBanner('Nenhum link encontrado para sincronizar.');
+      return;
+    }
+
+    const controller = new AbortController();
+    auditAbortControllerRef.current = controller;
+    setAuditRunning(true);
+    setAuditProgress(null);
+    setAuditSummary(null);
+
+    try {
+      const summary = await auditAndSyncShelfLinks(targetItems, {
+        checkHealth: auditCheckHealth,
+        fillMissingCovers: auditFillCovers,
+        forceCovers: auditForceCovers,
+        signal: controller.signal,
+        onProgress: (prog) => {
+          setAuditProgress(prog);
+        },
+      });
+
+      setAuditSummary(summary);
+      await refreshShelf();
+      if (!summary.aborted) {
+        showBanner(
+          `Sincronizacao concluida: ${summary.online} ativos${
+            summary.coversUpdated > 0 ? `, ${summary.coversUpdated} capas salvas` : ''
+          }${summary.offline > 0 ? `, ${summary.offline} inativos` : ''}.`
+        );
+      } else {
+        showBanner('Sincronizacao interrompida.');
+      }
+    } catch {
+      showBanner('Nao foi possivel concluir a sincronizacao dos links.');
+    } finally {
+      setAuditRunning(false);
+      auditAbortControllerRef.current = null;
+    }
+  };
+
+  const handleCancelShelfSync = () => {
+    if (auditAbortControllerRef.current) {
+      auditAbortControllerRef.current.abort();
+    }
+  };
+
   const syncAttentionDot =
     updateResult?.hasUpdate
       ? 'action'
@@ -1548,6 +1619,16 @@ export function DashboardApp() {
                 <Keyboard size={16} aria-hidden="true" />
                 <span>Atalhos</span>
                 <kbd className="kbd-badge">?</kbd>
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-surface"
+                onClick={() => openSyncModal('audit')}
+                title="Auditar se os dominios estao ativos e recuperar capas faltantes"
+              >
+                <ShieldCheck size={16} aria-hidden="true" />
+                <span>Sincronizar</span>
               </button>
 
               <button
@@ -2739,6 +2820,16 @@ export function DashboardApp() {
             <button
               type="button"
               role="tab"
+              aria-selected={syncModalTab === 'audit'}
+              className={`sync-tab-btn ${syncModalTab === 'audit' ? 'is-active' : ''}`}
+              onClick={() => setSyncModalTab('audit')}
+            >
+              <ShieldCheck size={15} aria-hidden="true" />
+              <span>Auditoria e Saude</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
               aria-selected={syncModalTab === 'backup'}
               className={`sync-tab-btn ${syncModalTab === 'backup' ? 'is-active' : ''}`}
               onClick={() => setSyncModalTab('backup')}
@@ -2773,6 +2864,285 @@ export function DashboardApp() {
               ) : null}
             </button>
           </div>
+
+          {/* Secao 0: Sincronizar e Auditar Links da Estante */}
+          {syncModalTab === 'audit' ? (
+            <section className="sync-section" aria-label="Sincronizacao e auditoria de links">
+              <h3 className="shortcuts-section-title">
+                Auditoria de Saude e Recuperacao de Capas
+              </h3>
+              <p className="field-hint" style={{ margin: 0 }}>
+                Verifica se os sites e dominios ainda estao online e ativos, e preenche capas
+                em WebP offline para links que ficaram sem imagem, preservando suas capas de sinopse.
+              </p>
+
+              {/* Seletor de Escopo */}
+              <div className="field-group" style={{ marginTop: 12 }}>
+                <label className="field-label">Escopo da verificacao</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    disabled={auditRunning}
+                    className={`filter-chip ${auditScope === 'current' ? 'is-active' : ''}`}
+                    onClick={() => setAuditScope('current')}
+                  >
+                    {activeTabObj ? `Aba "${activeTabObj.name}"` : 'Aba atual'}{' '}
+                    ({activeTabId !== 'ALL' ? items.filter((it) => it.tabId === activeTabId).length : items.length} links)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={auditRunning}
+                    className={`filter-chip ${auditScope === 'all' ? 'is-active' : ''}`}
+                    onClick={() => setAuditScope('all')}
+                  >
+                    Toda a estante ({items.length} links)
+                  </button>
+                </div>
+              </div>
+
+              {/* Opcoes de auditoria */}
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                  padding: '10px 12px',
+                  background: 'var(--subtle)',
+                  borderRadius: 'var(--radius-sm)',
+                }}
+              >
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: 13,
+                    color: 'var(--ink)',
+                    cursor: auditRunning ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    disabled={auditRunning}
+                    checked={auditCheckHealth}
+                    onChange={(e) => setAuditCheckHealth(e.target.checked)}
+                  />
+                  <span>Verificar se os dominios estao ativos e respondendo</span>
+                </label>
+
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: 13,
+                    color: 'var(--ink)',
+                    cursor: auditRunning ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    disabled={auditRunning}
+                    checked={auditFillCovers}
+                    onChange={(e) => setAuditFillCovers(e.target.checked)}
+                  />
+                  <span>Preencher capas apenas dos links sem imagem (preserva capas de sinopse)</span>
+                </label>
+
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: 12,
+                    color: 'var(--muted)',
+                    cursor: auditRunning ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    disabled={auditRunning}
+                    checked={auditForceCovers}
+                    onChange={(e) => setAuditForceCovers(e.target.checked)}
+                  />
+                  <span>Forcar nova captura para todos os links (sobrescreve capas existentes)</span>
+                </label>
+              </div>
+
+              {/* Barra de Progresso Durante Execucao */}
+              {auditRunning && auditProgress ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    padding: '12px',
+                    border: '1px solid var(--line-strong)',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--surface)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 600 }}>
+                    <span>Verificando links ({auditProgress.current}/{auditProgress.total})...</span>
+                    <span className="font-data">
+                      {Math.round((auditProgress.current / auditProgress.total) * 100)}%
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      height: 6,
+                      background: 'var(--subtle)',
+                      borderRadius: 'var(--radius-pill)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${Math.round((auditProgress.current / auditProgress.total) * 100)}%`,
+                        background: 'var(--action)',
+                        transition: 'width 180ms ease',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '75%' }}>
+                      {auditProgress.item.title} ({auditProgress.item.domain})
+                    </span>
+                    <span className="font-data" style={{ color: auditProgress.status === 'offline' ? 'var(--destructive)' : 'var(--success)' }}>
+                      {auditProgress.detail ?? auditProgress.status}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Resumo da Ultima Auditoria */}
+              {auditSummary ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: '10px 12px',
+                        background: 'var(--subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <div className="font-data" style={{ fontSize: 20, fontWeight: 700, color: 'var(--success)' }}>
+                        {auditSummary.online}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>Ativos / Online</div>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: '10px 12px',
+                        background: 'var(--subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <div className="font-data" style={{ fontSize: 20, fontWeight: 700, color: 'var(--action)' }}>
+                        {auditSummary.coversUpdated}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>Capas Salvas</div>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: '10px 12px',
+                        background: 'var(--subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <div className="font-data" style={{ fontSize: 20, fontWeight: 700, color: auditSummary.offline > 0 ? 'var(--destructive)' : 'var(--muted)' }}>
+                        {auditSummary.offline}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>Inativos</div>
+                    </div>
+                  </div>
+
+                  {auditSummary.inactiveItems.length > 0 ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8,
+                        padding: '10px 12px',
+                        background: 'var(--destructive-soft)',
+                        border: '1px solid var(--destructive)',
+                        borderRadius: 'var(--radius-sm)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: 'var(--destructive)' }}>
+                        <AlertTriangle size={15} aria-hidden="true" />
+                        <span>{auditSummary.inactiveItems.length} {auditSummary.inactiveItems.length === 1 ? 'link nao respondeu' : 'links nao responderam'}:</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 120, overflowY: 'auto' }}>
+                        {auditSummary.inactiveItems.map(({ item, reason }) => (
+                          <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 10 }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <strong>{item.title}</strong> ({item.domain})
+                            </span>
+                            <span style={{ color: 'var(--muted)', flexShrink: 0 }}>{reason}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {auditSummary.inactiveItems[0]?.item.domain ? (
+                        <div style={{ paddingTop: 4 }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              setDomainOld(auditSummary.inactiveItems[0].item.domain);
+                              setSyncModalTab('domain');
+                            }}
+                          >
+                            <Globe size={14} aria-hidden="true" />
+                            <span>Trocar dominio de {auditSummary.inactiveItems[0].item.domain}</span>
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* Botoes de Acao */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                {auditRunning ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ flex: 1 }}
+                    onClick={handleCancelShelfSync}
+                  >
+                    <X size={15} aria-hidden="true" />
+                    <span>Cancelar / Parar</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ flex: 1 }}
+                    onClick={handleStartShelfSync}
+                  >
+                    <ShieldCheck size={16} aria-hidden="true" />
+                    <span>Iniciar Auditoria e Sincronizacao</span>
+                  </button>
+                )}
+              </div>
+            </section>
+          ) : null}
 
           {/* Secao 1: Backup Automatico em Arquivo Fixo no PC */}
           {syncModalTab === 'backup' ? (

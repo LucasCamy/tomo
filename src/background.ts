@@ -549,11 +549,13 @@ async function handleQuickSaveShortcut(closeAfter: boolean): Promise<void> {
 
   if (matched) {
     const nextProgress = detectedProgress || matched.progressLabel;
+    // PRESERVA a capa da sinopse da obra salva se ja existir; so preenche se estava vazia
+    const finalCover = matched.coverImage || coverImage;
     await updateSavedLink(matched.id, {
       url: safeUrl,
       progressLabel: nextProgress,
       faviconUrl: activeTab.favIconUrl || matched.faviconUrl,
-      coverImage: coverImage ?? matched.coverImage,
+      coverImage: finalCover,
     });
 
     const tabName = tabs.find((t) => t.id === matched.tabId)?.name ?? 'Estante';

@@ -17,6 +17,7 @@ import {
 import {
   detectProgressFromTab,
   extractNumericProgress,
+  extractSeriesSlug,
   findMatchingSavedItem,
   formatBadgeProgress,
   normalizeDomainHost,
@@ -27,6 +28,7 @@ import {
   suggestCleanTitle,
 } from '../progress';
 import { enrichOpenTabsWithCovers } from '../chromeBridge';
+import { auditAndSyncShelfLinks } from '../shelfSync';
 import {
   getNextReadingStatus,
   getReadingStatusLabel,
@@ -421,6 +423,108 @@ describe('version comparison & GitHub release payload validation', () => {
     const enriched = await enrichOpenTabsWithCovers(mockTabs);
     expect(enriched).toHaveLength(1);
     expect(enriched[0].cleanTitle).toBe('One Piece');
+  });
+
+  it('strips chapter prefixes at the beginning of tab titles', () => {
+    expect(suggestCleanTitle('Capitulo 142 - Solo Leveling')).toBe('Solo Leveling');
+    expect(suggestCleanTitle('Capítulo 50: The Beginning After The End')).toBe(
+      'The Beginning After The End'
+    );
+    expect(suggestCleanTitle('[Ch. 12] Jujutsu Kaisen')).toBe('Jujutsu Kaisen');
+    expect(suggestCleanTitle('Ler Cap. 10 - Chainsaw Man')).toBe('Chainsaw Man');
+    expect(suggestCleanTitle('Episodio 8 - Frieren')).toBe('Frieren');
+  });
+
+  it('extracts canonical series slugs across synopsis and reader URLs', () => {
+    expect(extractSeriesSlug('https://leitor.net/manga/solo-leveling')).toBe(
+      'solo-leveling'
+    );
+    expect(extractSeriesSlug('https://leitor.net/ler/solo-leveling/cap-142')).toBe(
+      'solo-leveling'
+    );
+    expect(
+      extractSeriesSlug(
+        'https://mangadex.org/title/a9667631-b79e-4c8a-92a0-410a560fcf71/solo-leveling'
+      )
+    ).toBe('solo-leveling');
+    expect(
+      extractSeriesSlug('https://exemplo.com/obra/jujutsu-kaisen/capitulo-200')
+    ).toBe('jujutsu-kaisen');
+  });
+
+  it('matches synopsis saved item with reader chapter tab across different route paths', () => {
+    const saved: SavedLinkItem[] = [
+      {
+        id: 'link-synopsis',
+        tabId: 'tab-mangas',
+        title: 'Solo Leveling',
+        url: 'https://leitor.net/manga/solo-leveling',
+        domain: 'leitor.net',
+        coverImage: 'data:image/webp;base64,poster-cover',
+        progressLabel: 'Cap. 100',
+        status: 'reading',
+        pinned: true,
+        createdAt: '2026-11-01T10:00:00.000Z',
+        updatedAt: '2026-11-01T10:00:00.000Z',
+      },
+    ];
+
+    const readingTab = {
+      title: 'Capitulo 142 - Solo Leveling | Leitor',
+      url: 'https://leitor.net/ler/solo-leveling/cap-142',
+    };
+
+    const matched = findMatchingSavedItem(readingTab, saved);
+    expect(matched).not.toBeNull();
+    expect(matched?.id).toBe('link-synopsis');
+    expect(matched?.coverImage).toBe('data:image/webp;base64,poster-cover');
+  });
+
+  it('executes shelf sync audit simulation and supports cancellation', async () => {
+    const items: SavedLinkItem[] = [
+      {
+        id: 'item-valid-1',
+        tabId: 'tab-1',
+        title: 'Ativo 1',
+        url: 'https://mangadex.org/title/1',
+        domain: 'mangadex.org',
+        status: 'reading',
+        pinned: false,
+        createdAt: '2026-11-01T00:00:00.000Z',
+        updatedAt: '2026-11-01T00:00:00.000Z',
+      },
+      {
+        id: 'item-invalid-2',
+        tabId: 'tab-1',
+        title: 'Invalido 2',
+        url: 'javascript:alert(1)',
+        domain: 'unknown',
+        status: 'reading',
+        pinned: false,
+        createdAt: '2026-11-01T00:00:00.000Z',
+        updatedAt: '2026-11-01T00:00:00.000Z',
+      },
+    ];
+
+    const progressReports: number[] = [];
+    const summary = await auditAndSyncShelfLinks(items, {
+      onProgress: (p) => progressReports.push(p.current),
+    });
+
+    expect(summary.total).toBe(2);
+    expect(summary.online).toBe(1);
+    expect(summary.offline).toBe(1);
+    expect(summary.inactiveItems).toHaveLength(1);
+    expect(summary.inactiveItems[0].item.id).toBe('item-invalid-2');
+    expect(progressReports).toEqual([1, 2]);
+
+    // Test cancellation via AbortSignal
+    const controller = new AbortController();
+    controller.abort();
+    const abortedSummary = await auditAndSyncShelfLinks(items, {
+      signal: controller.signal,
+    });
+    expect(abortedSummary.aborted).toBe(true);
   });
 });
 

@@ -77,6 +77,7 @@ export function PopupApp() {
 
   // Controle de correspondencia existente e feedback
   const [ignoreMatch, setIgnoreMatch] = useState(false);
+  const [updateMatchedCover, setUpdateMatchedCover] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [savedBanner, setSavedBanner] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -201,11 +202,16 @@ export function PopupApp() {
           snapshot.detectedProgress ||
           matchedItem.progressLabel;
 
+        // Preserva a capa da sinopse se ja existir no card, a menos que o usuario queira substituir
+        const finalCover = updateMatchedCover
+          ? (activeCoverPreview || matchedItem.coverImage)
+          : (matchedItem.coverImage || activeCoverPreview);
+
         const updated = await updateSavedLink(matchedItem.id, {
           url: snapshot.url,
           progressLabel: nextProgress,
           faviconUrl: snapshot.faviconUrl ?? matchedItem.faviconUrl,
-          coverImage: activeCoverPreview ?? matchedItem.coverImage,
+          coverImage: finalCover,
         });
 
         if (closeTabAfter && snapshot.chromeTabId !== undefined) {
@@ -232,7 +238,7 @@ export function PopupApp() {
         setSubmitting(false);
       }
     },
-    [matchedItem, snapshot, submitting, progressLabel, activeCoverPreview]
+    [matchedItem, snapshot, submitting, progressLabel, activeCoverPreview, updateMatchedCover]
   );
 
   const handleSaveNewItem = useCallback(
@@ -483,6 +489,71 @@ export function PopupApp() {
               >
                 +1
               </button>
+            </div>
+          </div>
+
+          {/* Previa da capa preservada com opcao de trocar se desejar */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '8px 10px',
+              background: 'var(--subtle)',
+              borderRadius: 'var(--radius-sm)',
+            }}
+          >
+            {matchedItem.coverImage || activeCoverPreview ? (
+              <div
+                style={{
+                  width: 40,
+                  height: 52,
+                  borderRadius: 4,
+                  overflow: 'hidden',
+                  flexShrink: 0,
+                  background: 'var(--surface)',
+                }}
+              >
+                <img
+                  src={
+                    updateMatchedCover
+                      ? activeCoverPreview || matchedItem.coverImage
+                      : matchedItem.coverImage || activeCoverPreview
+                  }
+                  alt="Capa da obra"
+                  referrerPolicy="no-referrer"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              </div>
+            ) : null}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  color: 'var(--ink)',
+                  fontWeight: 600,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={updateMatchedCover}
+                  onChange={(e) => setUpdateMatchedCover(e.target.checked)}
+                />
+                <span>
+                  {matchedItem.coverImage
+                    ? 'Substituir capa pela desta pagina'
+                    : 'Salvar capa desta pagina'}
+                </span>
+              </label>
+              <span className="field-hint" style={{ fontSize: 11, display: 'block', marginTop: 2 }}>
+                {matchedItem.coverImage && !updateMatchedCover
+                  ? 'Capa da sinopse preservada.'
+                  : 'Atualizara a imagem com a visualizacao atual.'}
+              </span>
             </div>
           </div>
 

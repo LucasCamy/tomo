@@ -99,8 +99,19 @@ export function suggestCleanTitle(rawTitle: string): string {
 
   let cleaned = trimmed
     .replace(/\s*[|·•]\s*[^|·•]{2,42}$/u, '')
+    // 1. Remove prefixos de capitulo no inicio do titulo (ex.: "Capitulo 142 - Solo Leveling", "[Cap. 142] Solo Leveling", "Chapter 450: Komi-san")
     .replace(
-      /\s*(?:[-–—:]\s*)?(?:ler\s+)?(?:cap[ií]tulo|cap\.?|chapter|ch\.?|epis[oó]dio|ep\.?|temporada|season)\s*#?\s*\d+(?:[.,]\d+)?.*$/iu,
+      /^\[\s*(?:cap[ií]tulo|cap\.?|chapter|chap\.?|ch\.?|epis[oó]dio|ep\.?)\s*#?\s*\d+(?:[.,]\d+)?\s*\]\s*[-–—:|·•]?\s*/iu,
+      ''
+    )
+    .replace(
+      /^(?:ler\s+|assistir\s+)?(?:cap[ií]tulo|cap\.?|chapter|chap\.?|ch\.?|epis[oó]dio|ep\.?|temporada|season)\s*#?\s*\d+(?:[.,]\d+)?\s*(?:[-–—:|·•]\s*)?/iu,
+      ''
+    )
+    .replace(/^(?:ler|assistir)\s+/iu, '')
+    // 2. Remove sufixos de capitulo e temporada no final (exige espaco ou separador anterior)
+    .replace(
+      /(?:\s+[-–—:]\s*|\s+)(?:ler\s+)?(?:cap[ií]tulo|cap\.?|chapter|chap\.?|ch\.?|epis[oó]dio|ep\.?|temporada|season)\s*#?\s*\d+(?:[.,]\d+)?.*$/iu,
       ''
     )
     .replace(/\s+[—–]\s+[^—–|-]{2,30}$/u, '')
@@ -108,7 +119,6 @@ export function suggestCleanTitle(rawTitle: string): string {
       /\s+-\s+[^-]{0,24}(?:[a-z0-9_-]*(?:scans?|scantrad|toons?|mang[aá]s?|manhwas?|manhuas?|webtoons?|comics?|leitor|online|oficial|pt-br|reader))\b[^-]*$/iu,
       ''
     )
-    .replace(/^(?:ler|assistir)\s+/iu, '')
     .replace(/\s+(?:online|pt-br|em\s+portugu[eê]s|scan|mang[aá]s?)$/iu, '')
     .replace(/^[\s\-–—:|·•]+|[\s\-–—:|·•]+$/gu, '')
     .trim();
@@ -243,6 +253,53 @@ function extractSeriesBasePath(rawUrl: string): string | null {
   }
 }
 
+const ROUTING_PREFIXES = new Set([
+  'manga',
+  'mangas',
+  'manhwa',
+  'manhwas',
+  'manhua',
+  'manhuas',
+  'ler',
+  'leitor',
+  'obra',
+  'obras',
+  'series',
+  'serie',
+  'title',
+  'titles',
+  'read',
+  'reader',
+  'comic',
+  'comics',
+  'webtoon',
+  'webtoons',
+  'watch',
+  'assistir',
+]);
+
+export function extractSeriesSlug(rawUrl: string): string | null {
+  try {
+    const u = new URL(rawUrl);
+    const cleanedPath = u.pathname
+      .toLowerCase()
+      .replace(/\/(?:cap(?:itulo)?|chapter|chap|ch|ep(?:isodio)?|c)[-_./]?\d+(?:[.,]\d+)?.*$/i, '')
+      .replace(/[-_](?:cap(?:itulo)?|chapter|chap|ch|ep)[-_]?\d+(?:[.,]\d+)?.*$/i, '')
+      .replace(/\/+$/, '');
+
+    const segments = cleanedPath.split('/').filter(Boolean);
+    if (segments.length === 0) return null;
+
+    const meaningful = segments.filter((s) => !ROUTING_PREFIXES.has(s));
+    if (meaningful.length === 0) return null;
+
+    const lastSlug = meaningful[meaningful.length - 1];
+    return lastSlug.length >= 3 ? lastSlug : null;
+  } catch {
+    return null;
+  }
+}
+
 export function findMatchingSavedItem(
   candidate: { title: string; url: string },
   items: SavedLinkItem[]
@@ -261,10 +318,36 @@ export function findMatchingSavedItem(
     if (pathMatch) return pathMatch;
   }
 
-  // 3. Mesmo titulo de obra normalizado (>= 4 caracteres)
+  // 3. Mesmo slug canonico de serie no mesmo host (ex.: /manga/solo-leveling vs /ler/solo-leveling/cap-142)
+  const candidateSlug = extractSeriesSlug(safeUrl);
+  if (candidateSlug && candidateSlug.length >= 3) {
+    try {
+      const candidateHost = new URL(safeUrl).hostname.replace(/^www\./i, '');
+      const slugMatch = items.find((item) => {
+        try {
+          const itemHost = new URL(item.url).hostname.replace(/^www\./i, '');
+          return itemHost === candidateHost && extractSeriesSlug(item.url) === candidateSlug;
+        } catch {
+          return false;
+        }
+      });
+      if (slugMatch) return slugMatch;
+    } catch {
+      // continua
+    }
+  }
+
+  // 4. Mesmo titulo de obra normalizado (>= 4 caracteres)
   const normCandidate = normalizeForMatch(candidate.title);
   if (normCandidate.length >= 4) {
-    const titleMatch = items.find((item) => normalizeForMatch(item.title) === normCandidate);
+    const titleMatch = items.find((item) => {
+      const normItem = normalizeForMatch(item.title);
+      if (normItem === normCandidate) return true;
+      if (normItem.length >= 6 && normCandidate.length >= 6) {
+        return normItem.includes(normCandidate) || normCandidate.includes(normItem);
+      }
+      return false;
+    });
     if (titleMatch) return titleMatch;
   }
 
