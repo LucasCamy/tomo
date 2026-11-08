@@ -1659,12 +1659,18 @@ textarea {
 
 .sync-tabs-bar {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   padding: 4px;
   border-radius: var(--radius-md);
   background-color: var(--bg);
   border: 1px solid var(--line-strong);
+}
+
+@media (max-width: 520px) {
+  .sync-tabs-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .sync-tab-btn {

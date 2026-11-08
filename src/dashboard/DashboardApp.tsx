@@ -1596,12 +1596,12 @@ export function DashboardApp() {
             <div className="shelf-header-actions">
               <button
                 type="button"
-                className="btn btn-surface"
+                className="btn btn-surface btn-icon"
                 onClick={() => openSyncModal()}
+                aria-label="Atualizar e sincronizacao"
                 title="Sincronizar arquivo local .json, trocar dominio em massa e verificar versao"
               >
                 <RefreshCw size={16} aria-hidden="true" />
-                <span>Atualizar</span>
                 {syncAttentionDot ? (
                   <span
                     className={`btn-status-dot btn-status-dot--${syncAttentionDot}`}
@@ -2799,7 +2799,7 @@ export function DashboardApp() {
       {/* MODAL 8: Sincronizacao Automatica Local (.json), Troca de Dominio e Atualizacao via GitHub */}
       <ModalDialog
         open={syncModalOpen}
-        title="Sincronizacao, Dominio e Atualizacao"
+        title="Sincronizacao e Manutencao"
         onClose={() => setSyncModalOpen(false)}
         footer={
           <button
@@ -2815,7 +2815,7 @@ export function DashboardApp() {
           <div
             className="sync-tabs-bar"
             role="tablist"
-            aria-label="Opcoes de sincronizacao, dominio e atualizacao"
+            aria-label="Opcoes de sincronizacao, backup, dominio e versao"
           >
             <button
               type="button"
@@ -2825,7 +2825,7 @@ export function DashboardApp() {
               onClick={() => setSyncModalTab('audit')}
             >
               <ShieldCheck size={15} aria-hidden="true" />
-              <span>Auditoria e Saude</span>
+              <span>Auditoria</span>
             </button>
             <button
               type="button"
@@ -2835,7 +2835,7 @@ export function DashboardApp() {
               onClick={() => setSyncModalTab('backup')}
             >
               <HardDrive size={15} aria-hidden="true" />
-              <span>Backup Auto</span>
+              <span>Backup</span>
             </button>
             <button
               type="button"
@@ -2845,7 +2845,7 @@ export function DashboardApp() {
               onClick={() => setSyncModalTab('domain')}
             >
               <Globe size={15} aria-hidden="true" />
-              <span>Trocar Dominio</span>
+              <span>Dominio</span>
             </button>
             <button
               type="button"
