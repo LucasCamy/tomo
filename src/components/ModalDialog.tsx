@@ -19,6 +19,8 @@ export function ModalDialog({
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -28,16 +30,29 @@ export function ModalDialog({
     const focusTimer = window.setTimeout(() => {
       const panel = panelRef.current;
       if (!panel) return;
-      const firstInput = panel.querySelector<HTMLElement>(
-        'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])'
-      );
-      firstInput?.focus();
-    }, 10);
+      if (
+        panel.contains(document.activeElement) &&
+        document.activeElement !== panel
+      ) {
+        return;
+      }
+      const firstTarget =
+        panel.querySelector<HTMLElement>('[autofocus]:not([disabled])') ||
+        panel.querySelector<HTMLElement>(
+          'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])'
+        ) ||
+        panel.querySelector<HTMLElement>(
+          '.modal-footer button.btn-primary:not([disabled])'
+        ) ||
+        panel.querySelector<HTMLElement>('button:not([disabled])');
+
+      firstTarget?.focus();
+    }, 15);
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -67,7 +82,7 @@ export function ModalDialog({
       document.removeEventListener('keydown', handleKeyDown);
       previousFocusRef.current?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
